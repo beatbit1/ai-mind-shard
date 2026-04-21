@@ -28,31 +28,7 @@ export function SiteHeader() {
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-8 md:flex">
-          {[
-            ["Platform", "#platform"],
-            ["Agents", "#agents"],
-            ["Demo", "#demo"],
-            ["Ecosystem", "#ecosystem"],
-            ["Docs", "#docs"],
-          ].map(([label, href]) => (
-            <a
-              key={label}
-              href={href}
-              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              {label}
-            </a>
-          ))}
-        </nav>
-
         <div className="flex items-center gap-3">
-          <Link
-            to="/"
-            className="hidden text-sm text-muted-foreground hover:text-foreground sm:inline"
-          >
-            Connect Wallet
-          </Link>
           <a
             href="/app"
             className="inline-flex h-9 items-center rounded-full bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90"
