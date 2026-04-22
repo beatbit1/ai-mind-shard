@@ -1,8 +1,7 @@
-// OpenClaw prepaid ledger management for 0G Compute micropayments.
 import { getBroker } from "./zg.core.server";
 
-const TOPUP_AMOUNT = 0.05; // OG
-const MIN_BALANCE = 0.01; // OG — top up when below
+const TOPUP_AMOUNT = 0.05;
+const MIN_BALANCE = 0.01;
 
 export async function ensureLedgerFunded(): Promise<{
   balanceOG: number;
@@ -14,12 +13,10 @@ export async function ensureLedgerFunded(): Promise<{
 
   try {
     const ledger = await broker.ledger.getLedger();
-    // ledger balance is typically a BigInt in wei-equivalent
     const raw = (ledger?.totalBalance ?? ledger?.balance ?? 0n) as bigint | number;
     const asBig = typeof raw === "bigint" ? raw : BigInt(raw);
     balanceOG = Number(asBig) / 1e18;
   } catch {
-    // No ledger account yet — create one via depositFund
     await broker.ledger.addLedger(TOPUP_AMOUNT);
     toppedUp = true;
     balanceOG = TOPUP_AMOUNT;

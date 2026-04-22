@@ -26,7 +26,6 @@ function toSafeError(e: unknown): { kind: string; message: string; address?: str
   return { kind: "error", message: msg };
 }
 
-// ─── chat0g ──────────────────────────────────────────────────────────────────
 export const chat0g = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => d as { messages: ChatMsg[] })
   .handler(async ({ data }) => {
@@ -79,7 +78,6 @@ export const chat0g = createServerFn({ method: "POST" })
     }
   });
 
-// ─── commitMemory ────────────────────────────────────────────────────────────
 export const commitMemory = createServerFn({ method: "POST" })
   .inputValidator(
     (d: unknown) =>
@@ -103,10 +101,7 @@ export const commitMemory = createServerFn({ method: "POST" })
       const blob = encrypt(payload);
 
       const { ZgFile } = await import("@0glabs/0g-ts-sdk");
-      // ZgFile from buffer
-      const file = (ZgFile as any).fromBuffer
-        ? (ZgFile as any).fromBuffer(blob)
-        : new (ZgFile as any)(blob);
+      const file = (ZgFile as any).fromBuffer ? (ZgFile as any).fromBuffer(blob) : new (ZgFile as any)(blob);
 
       const [tree, treeErr] = await (file as any).merkleTree();
       if (treeErr) throw new Error(`merkleTree: ${treeErr}`);
@@ -127,8 +122,6 @@ export const commitMemory = createServerFn({ method: "POST" })
     }
   });
 
-// ─── recallMemories ──────────────────────────────────────────────────────────
-// Downloads a list of root hashes (passed from the client's persisted index) and decrypts them.
 export const recallMemories = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => d as { rootHashes: string[] })
   .handler(async ({ data }) => {
@@ -147,7 +140,6 @@ export const recallMemories = createServerFn({ method: "POST" })
       for (const root of data.rootHashes.slice(-20)) {
         const ts0 = Date.now();
         try {
-          // SDK download API: download(rootHash, outFile?, withProof?) → returns Buffer in newer versions
           const result: any = await (indexer as any).download(root, true);
           const blob: Buffer = Buffer.isBuffer(result)
             ? result
@@ -163,7 +155,6 @@ export const recallMemories = createServerFn({ method: "POST" })
             latencyMs: Date.now() - ts0,
           });
         } catch {
-          // skip unreadable shards
         }
       }
 
@@ -173,7 +164,6 @@ export const recallMemories = createServerFn({ method: "POST" })
     }
   });
 
-// ─── status (for UI gating) ──────────────────────────────────────────────────
 export const zgStatus = createServerFn({ method: "GET" }).handler(async () => {
   try {
     await assertFunded();
