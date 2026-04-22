@@ -6,7 +6,7 @@ import {
   getWallet,
   ZGNotConfiguredError,
   ZGUnfundedError,
-} from "./zg.client";
+} from "./zg.core";
 import { decrypt, encrypt } from "./zg.crypto";
 import { ensureLedgerFunded, getLedgerBalanceOG } from "./zg.ledger";
 

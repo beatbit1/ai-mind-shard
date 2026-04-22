@@ -1,5 +1,5 @@
 // OpenClaw prepaid ledger management for 0G Compute micropayments.
-import { getBroker } from "./zg.client";
+import { getBroker } from "./zg.core";
 
 const TOPUP_AMOUNT = 0.05; // OG
 const MIN_BALANCE = 0.01; // OG — top up when below
