@@ -1,99 +1,109 @@
 
 
-# Rebuild the dashboard around the two real use cases
+# Real 0G integration for Mnemos (Compute + Storage + OpenClaw)
 
-You're right — the current `/app` is too abstract. We'll redesign it as **two purpose-built workspaces** that walk the user through the exact case-study flows, so when judges open it they immediately see the product in action.
+## What we're building
 
-## New navigation model
+Mnemos becomes a **real coding & blockchain research agent** that:
+- Chats via **0G Compute** running `llama-3.3-70b-instruct` (auto-discovered provider, no static URL needed)
+- Persists every exchange as **AES-256-GCM encrypted blobs on 0G Storage** (Galileo testnet, real merkle root)
+- Pays for inference + storage via **OpenClaw prepaid ledger** (real OG micropayments, surfaced in the trace)
+- Recalls past memories on return by listing the wallet's stored roots and downloading + decrypting them
 
-The dashboard becomes a workspace with a left sidebar and two switchable apps:
+No simulation left in Mnemos. Atlas stays simulated for now (separate task).
+
+## Secrets we need (just 2)
+
+When you approve, I'll trigger the secret prompt for:
+1. **`ZG_PRIVATE_KEY`** — funded Galileo testnet wallet private key (the 64-hex-char one starting with `0x`, NOT the address you sent). Needs ~0.1 OG from the faucet.
+2. **`ZG_MEMORY_ENC_KEY`** — 32-byte hex string for AES-256-GCM. I'll provide the exact `openssl rand -hex 32` command in the prompt; you paste the output.
+
+Dropped: `ZG_COMPUTE_PROVIDER_URL` (auto-discovered) and `ZG_COMPUTE_API_SECRET` (per-request signed headers, no static secret exists).
+
+## Architecture
+
+All 0G SDK calls run **server-side** in TanStack `createServerFn` handlers — the SDKs are Node-leaning and the private key must never reach the browser.
 
 ```text
-┌──────────────┬──────────────────────────────────────────────┐
-│  TONARA      │                                              │
-│              │            [ Active workspace ]              │
-│  · Mnemos    │                                              │
-│  · Atlas     │                                              │
-│              │                                              │
-│  ───────     │                                              │
-│  wallet      │                                              │
-└──────────────┴──────────────────────────────────────────────┘
+Browser (Mnemos.tsx)
+   │  useServerFn(chat0g)        useServerFn(commitMemory)        useServerFn(recallMemories)
+   ▼                                ▼                                ▼
+src/server/zg.functions.ts  ──────────────────────────────────────────────
+   │                                │                                │
+   ▼                                ▼                                ▼
+0g-serving-broker SDK          @0glabs/0g-ts-sdk              @0glabs/0g-ts-sdk
+(inference + ledger)            Indexer + ZgFile                Indexer.download
++ OpenClaw prepaid             → uploads encrypted blob        + AES-GCM decrypt
+ledger (auto-debit)            → returns rootHash + txHash
 ```
 
-- **Mnemos** — the companion-agent workspace (sharded memory use case). "Mnemos" = memory in Greek, fits the "permanent brain" story without using the word "shard".
-- **Atlas** — the cross-chain research-agent workspace (cross-chain fragmentation use case). "Atlas" = a map across chains.
+## New / changed files
 
-No "Sharded Memory" / "Cross-Chain Fragmentation" labels in the UI. Those become the *infrastructure* powering each app, surfaced in the runtime trace panel.
+**Server (new):**
+- `src/server/zg.client.ts` — initializes wallet (`ethers`), `Indexer` (Turbo testnet), and `0g-serving-broker` once. Module-level singletons gated by `createServerOnlyFn`.
+- `src/server/zg.crypto.ts` — AES-256-GCM encrypt/decrypt helpers using `ZG_MEMORY_ENC_KEY`.
+- `src/server/zg.functions.ts` — three `createServerFn` endpoints:
+  - `chat0g({ messages })` → discovers `llama-3.3-70b-instruct` provider, generates signed auth headers via broker, calls OpenAI-compatible `/chat/completions`, returns assistant reply + provider/model/cost metadata.
+  - `commitMemory({ wallet, role, text, sessionId })` → encrypts payload, uploads via `Indexer.upload(zgFile)`, returns `{ rootHash, txHash, sizeBytes, latencyMs }`.
+  - `recallMemories({ wallet, limit })` → reads the wallet's memory index (a small JSON manifest stored at a deterministic path per wallet), downloads each blob, decrypts, returns the message list with per-shard latency + cost.
+- `src/server/zg.ledger.ts` — `ensureLedgerFunded()` helper that checks `broker.ledger.getLedger()` and tops up with `broker.ledger.depositFund(0.05)` if balance < threshold. Called lazily before each inference + download.
 
-Top bar keeps **Connect Wallet** (RainbowKit, already wired) and removes the "0G testnet" badge and address chip you didn't want.
+**Frontend (refactor):**
+- `src/components/workspaces/Mnemos.tsx` — rewrite around the new server functions. Persona switches to **coding / blockchain research companion**. Seed prompts:
+  - *"Explain ERC-4337 account abstraction step by step"*
+  - *"Audit this Solidity function for reentrancy: …"*
+  - *"Index the last 10 swaps on Uniswap v4 pool 0x…"*
+  - *"What's the gas cost of CREATE2 vs CREATE in current EVM?"*
+  
+  On every send: call `commitMemory` (user msg) → `chat0g` (full thread) → `commitMemory` (assistant msg) → push real trace lines. The "Simulate return after 2 days" button now actually clears local state and calls `recallMemories(wallet)` — the agent replies referencing real decrypted prior context.
 
----
+- `src/components/workspaces/RecallTrace.tsx` — gains real fields: provider address, model, txHash (linkable to chainscan-galileo), rootHash. Already supports the shape.
 
-## Workspace 1 — Mnemos (Companion Agent)
+**Deps to add:**
+- `@0glabs/0g-ts-sdk` — storage SDK
+- `@0glabs/0g-serving-broker` — compute SDK
+- `ethers` v6 — required by both SDKs
 
-Mirrors your case study: *"User chats with agent → conversation stored as encrypted shards → returns 2 days later → agent recalls a specific past detail."*
+## OpenClaw integration
 
-**Layout:** chat on the left (60%), live infra trace on the right (40%).
+Wired into `zg.ledger.ts`:
+1. On first server-fn call after deploy, `ensureLedgerFunded()` deposits 0.05 OG into the OpenClaw prepaid ledger via `broker.ledger.depositFund(0.05)`.
+2. Every subsequent inference call and storage download auto-debits from this balance — the broker handles the on-chain micropayment under the hood and returns the cost.
+3. We surface `broker.ledger.getLedger()` balance in the trace footer so judges see it tick down in real time (`ledger: 0.0479 OG`).
 
-**Chat panel:**
-- Real chat UI: user bubbles + agent bubbles, input at the bottom, send button.
-- Each user message is "encrypted and sharded" in the background — we visualize it without saying "shard": the message briefly shows a lock icon + "memory committed · mem_xxxx".
-- A **"Simulate return after 2 days"** button at the top. Clicking it clears the visible chat (like a fresh session), keeps the wallet connected, and shows an empty input. When the user types something vague like "hey" or clicks a suggested prompt ("continue our last conversation"), the agent automatically performs a recall and replies referencing the prior context (e.g., *"Last time you mentioned trouble sleeping — did the breathing exercise help?"*).
-- Seed prompts at the bottom of empty state: *"I've been struggling to sleep lately"*, *"Help me think through a career decision"*, *"Remember that I'm allergic to peanuts"*.
+## Trace output (real, not simulated)
 
-**Right side — Recall trace:**
-Live timeline that lights up during recall:
+When you send a message, the right panel will show:
+
 ```text
-› resolving on-chain index · mem_8f21c…
-› micropayment · 0.0021 OG → ShardEscrow
-› fetching 6 shards in parallel
-   ├─ 0G  ████████ 4/4
-   └─ 0G  ████     2/2
-✓ reassembled · decrypted · 287 ms
+12:04:11 › encrypting · AES-256-GCM · 412B
+12:04:11 › uploading to 0G Storage · indexer.upload(zgFile)
+12:04:13 ✓ committed · root 0xa1b2…f9e0 · tx 0x7c4e…12ab · 1.84s
+12:04:13 › discovering inference provider · llama-3.3-70b-instruct
+12:04:13 › signing request headers · OpenClaw debit pending
+12:04:14 › POST /chat/completions · provider 0xf072…65Dd
+12:04:18 ✓ inference · 4.1s · 287 tokens · 0.00031 OG debited
+12:04:18 › encrypting reply · uploading
+12:04:19 ✓ committed · root 0xc3d4…aa11 · tx 0x9f81…ee02
+        ledger: 0.04959 OG · session: 2 memories
 ```
-Plus a small stat row: `latency`, `shards`, `cost`, `memory_id`.
 
-**Wallet gate:** chat input is disabled with an inline "Connect wallet to start a session" until connected.
+## Verification plan
 
----
+After implementation, I'll:
+1. Hit `/api/test-zg-storage` (a temporary `createServerFn`-backed route) to upload "hello world", get a real root hash, then download + decrypt — confirms storage round-trip works.
+2. Hit `/api/test-zg-inference` to call `llama-3.3-70b-instruct` with "say hi" — confirms compute + ledger debit works.
+3. Open Mnemos in the preview, send a message, watch trace, check the txHash links resolve on `chainscan-galileo.0g.ai`.
+4. Click "Simulate return", ask "what did we discuss?" — agent should reply with real recalled context from decrypted blobs.
+5. Remove the two test routes once verified.
 
-## Workspace 2 — Atlas (Cross-Chain Research Agent)
+I'll report back with the rootHash, txHash, ledger balance change, and a screenshot of the working trace.
 
-Mirrors your case study: *"Agent on Solana queries 'what did I learn about token X?' → master index on 0G says shards live on 0G(4) + ETH(2) + SOL(2) → reassembled in <500ms."*
+## Risks / fallbacks
 
-**Layout:** query bar on top, animated chain map in the middle, research output below.
+- **Worker runtime compatibility**: `@0glabs/0g-ts-sdk` uses `ethers` + some Node crypto. Both work under TanStack's `nodejs_compat` worker. If a specific submodule fails (e.g., a stream API), we narrow to the exact `Indexer` + `ZgFile` exports we need and stub the rest.
+- **Faucet blocked**: if you can't get OG tokens before we ship, integration code still deploys but server functions will return a clear "wallet unfunded — please fund 0x… on Galileo" error instead of crashing. Mnemos shows this inline.
+- **Provider downtime**: if `llama-3.3-70b-instruct` provider is offline, we fall back to `deepseek-r1-70b` automatically.
 
-**Query bar:**
-- Single input: *"Ask Atlas about any token, protocol, or wallet…"*
-- Pre-seeded chips: `What did I learn about $JITO?`, `Summarize my notes on Uniswap v4 hooks`, `Top 3 risk flags for token 0x…`
-
-**Chain map (the visual centerpiece):**
-- Three labeled nodes laid out horizontally: **0G**, **ETH**, **SOL** (mono SVG, styled like the rest of the site).
-- A center node = **Atlas**.
-- When a query runs, animated lines pulse from each chain to Atlas as shards arrive, with a counter on each edge: `0G · 4/4`, `ETH · 2/2`, `SOL · 2/2`.
-- A "Simulate 0G outage" toggle: when enabled, the 0G edge fails mid-fetch and the system reconstructs from ETH + SOL only (proves erasure-coding redundancy — the killer demo moment).
-
-**Research output card:**
-A formatted research note streams in token-by-token after reassembly (e.g., a paragraph about token X with bullet risk flags). Footer shows: `8 shards · 3 chains · reassembled in 412 ms · manifest 0x…anchored on 0G`.
-
-**Wallet gate:** query button disabled until connected.
-
----
-
-## Files to change
-
-- **`src/routes/app.tsx`** — replace the current single-page operator console with a workspace shell: sidebar nav (Mnemos / Atlas), top bar with Connect Wallet, and a switcher that mounts one workspace at a time. Keep `WalletProviders` wrapper.
-- **`src/components/workspaces/Mnemos.tsx`** — new. Chat UI + recall trace + "simulate return" flow. Local state for messages and a fake long-term store keyed by wallet address (so reconnecting actually feels like resuming).
-- **`src/components/workspaces/Atlas.tsx`** — new. Query bar + animated SVG chain map + research output. Includes the outage toggle.
-- **`src/components/workspaces/RecallTrace.tsx`** — new. Reusable infra timeline component used by both workspaces.
-- **`src/components/workspaces/ChainMap.tsx`** — new. SVG-based animated 0G/ETH/SOL ↔ Atlas graph with pulsing edges.
-
-No changes to landing page, wallet config, or providers. All visuals stay strict black/white per your design rules.
-
-## What this gives you for the demo
-
-1. Open `/app`, click **Mnemos**, chat a few sentences → see "memory committed" pulses → click **Simulate return after 2 days** → ask "what were we talking about?" → agent answers correctly and the trace panel lights up showing the 0G recall. Exact case-study flow.
-2. Click **Atlas**, run a token query → watch shards stream in from 0G + ETH + SOL on the map → research note materializes. Toggle the outage and re-run → 0G edge fails red, ETH+SOL still reconstruct. Exact case-study flow with a wow moment.
-
-Both workspaces are fully functional simulations on top of the wallet connection that already works — no backend needed for the hackathon demo, and the structure is ready to swap in real 0G SDK calls per panel later.
+Approve and I'll request the 2 secrets, then implement + verify end-to-end.
 
