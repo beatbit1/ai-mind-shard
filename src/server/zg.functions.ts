@@ -6,9 +6,9 @@ import {
   getWallet,
   ZGNotConfiguredError,
   ZGUnfundedError,
-} from "./zg.core";
-import { decrypt, encrypt } from "./zg.crypto";
-import { ensureLedgerFunded, getLedgerBalanceOG } from "./zg.ledger";
+} from "./zg.core.server";
+import { decrypt, encrypt } from "./zg.crypto.server";
+import { ensureLedgerFunded, getLedgerBalanceOG } from "./zg.ledger.server";
 
 const PREFERRED_MODELS = ["llama-3.3-70b-instruct", "deepseek-r1-70b"];
 const SYSTEM_PROMPT = `You are Mnemos — a senior coding and blockchain research companion running on 0G's decentralized compute network. You specialize in Solidity, EVM internals, account abstraction (ERC-4337), DeFi protocol design, on-chain indexing, gas optimization, security auditing, and reading raw blockchain data. Be precise, cite EIPs/standards by number, prefer code examples over prose, and flag risks (reentrancy, oracle manipulation, MEV, upgrade footguns). When recalling prior context from the user's encrypted memory on 0G Storage, reference it explicitly so they know it was retrieved.`;
