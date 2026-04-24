@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useAccount } from "wagmi";
+import { useServerFn } from "@tanstack/react-start";
 import { ChainMap, type ChainEdge } from "./ChainMap";
 import { RecallTrace, type TraceLine, sha256Hex, ts, wait } from "./RecallTrace";
+import { chat0g, commitMemory } from "@/server/zg.functions";
 
 const SEED_QUERIES = [
   "What did I learn about $JITO?",
@@ -9,35 +11,12 @@ const SEED_QUERIES = [
   "Top 3 risk flags for token 0x4f9b…",
 ];
 
-const RESEARCH: Record<string, string[]> = {
-  jito: [
-    "Jito ($JITO) is a Solana liquid-staking + MEV-capture protocol.",
-    "• TVL trend: steadily expanding through restaking integrations.",
-    "• Yield source: validator MEV tips redistributed to JitoSOL holders.",
-    "• Risk flags: validator concentration, MEV regulation, smart-contract dependency on stake-pool program.",
-    "Personal notes: you flagged this as a long-term hold last week.",
-  ],
-  uniswap: [
-    "Uniswap v4 introduces hooks: contracts attached to a pool's lifecycle (beforeSwap, afterSwap, etc.).",
-    "• Singleton architecture reduces gas vs v3's factory model.",
-    "• Hooks unlock dynamic fees, on-chain limit orders, and custom oracles.",
-    "• Risk: hook misconfiguration can brick a pool — always audit hook code paths.",
-    "Personal notes: you bookmarked the dynamic-fee whitepaper.",
-  ],
-  default: [
-    "Synthesizing your prior research across 3 chains…",
-    "• Sentiment: cautiously bullish based on your notes from the last 30 days.",
-    "• Liquidity: distributed across 2 DEX venues; thin depth below mid-cap range.",
-    "• Risk flags: low audit coverage, single-team dependency, governance centralization.",
-    "Personal notes: tagged as 'watch' — not in your active portfolio.",
-  ],
-};
+const ATLAS_SYSTEM = `You are Atlas — an on-chain intelligence agent. Given a user query, produce a concise, bullet-driven research brief covering: protocol/token summary, on-chain signals (TVL, flows, holders, liquidity), and 3 risk flags. Reference EIPs/standards by number. No filler.`;
 
 export function Atlas() {
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
   const [query, setQuery] = useState("");
   const [working, setWorking] = useState(false);
-  const [outage, setOutage] = useState(false);
   const [edges, setEdges] = useState<ChainEdge[]>([
     { chain: "0G", total: 4, fetched: 0, status: "idle" },
     { chain: "ETH", total: 2, fetched: 0, status: "idle" },
@@ -48,10 +27,12 @@ export function Atlas() {
   const [manifest, setManifest] = useState<string | null>(null);
   const [latency, setLatency] = useState<string | null>(null);
 
+  const chatFn = useServerFn(chat0g);
+  const commitFn = useServerFn(commitMemory);
+
   function pushTrace(level: TraceLine["level"], msg: string) {
     setTrace((t) => [...t, { t: ts(), level, msg }]);
   }
-
   function setEdge(chain: ChainEdge["chain"], patch: Partial<ChainEdge>) {
     setEdges((es) => es.map((e) => (e.chain === chain ? { ...e, ...patch } : e)));
   }
@@ -71,54 +52,57 @@ export function Atlas() {
 
     const start = performance.now();
     pushTrace("info", `query received · "${q.slice(0, 48)}${q.length > 48 ? "…" : ""}"`);
-    await wait(200);
-    pushTrace("info", `resolving master index on 0G · 8 shards across 3 chains`);
-    await wait(260);
+    pushTrace("info", `resolving manifest on 0G · 8 shards across 3 chains`);
 
-    // Start fetching from each chain in parallel
     const targets: ChainEdge["chain"][] = ["0G", "ETH", "SOL"];
     targets.forEach((c) => setEdge(c, { status: "fetching" }));
-    pushTrace("info", `parallel fetch initiated`);
 
     const tasks = targets.map(async (chain) => {
       const totals: Record<string, number> = { "0G": 4, ETH: 2, SOL: 2 };
       const total = totals[chain];
       for (let i = 1; i <= total; i++) {
-        await wait(140 + Math.random() * 120);
-        if (chain === "0G" && outage && i === 2) {
-          setEdge("0G", { status: "failed" });
-          pushTrace("err", `0G · node unreachable mid-stream · failing over`);
-          return;
-        }
+        await wait(120 + Math.random() * 100);
         setEdge(chain, { fetched: i });
         pushTrace("info", `${chain} · shard ${i}/${total} received`);
       }
       setEdge(chain, { status: "done" });
     });
-
     await Promise.all(tasks);
+    pushTrace("ok", `8 shards reassembled · dispatching to 0G inference`);
 
-    if (outage) {
-      pushTrace("info", `reconstructing from ETH + SOL via Reed–Solomon redundancy`);
-      await wait(320);
-      pushTrace("ok", `reassembled despite 0G outage · integrity verified`);
-    } else {
-      pushTrace("ok", `all 8 shards received · reassembling`);
-      await wait(220);
-    }
+    const chat = await chatFn({
+      data: {
+        messages: [
+          { role: "system", content: ATLAS_SYSTEM },
+          { role: "user", content: q },
+        ],
+      },
+    });
 
     const id = (await sha256Hex(q + Date.now())).slice(0, 12);
     setManifest(`0x${id}`);
-    const elapsed = Math.round(performance.now() - start);
-    setLatency(`${elapsed} ms`);
+    setLatency(`${Math.round(performance.now() - start)} ms`);
 
-    // Stream research output
-    const key = /jito/i.test(q) ? "jito" : /uniswap|hook/i.test(q) ? "uniswap" : "default";
-    const lines = RESEARCH[key];
+    let replyText = "";
+    if (chat.ok) {
+      replyText = chat.reply;
+      pushTrace("ok", `inference · ${chat.model} · ${chat.latencyMs}ms${chat.verified ? " · ✓verified" : ""}`);
+    } else {
+      replyText =
+        chat.error.kind === "not_configured"
+          ? `0G integration not yet configured.`
+          : chat.error.kind === "unfunded"
+            ? `Wallet unfunded. Fund ${chat.error.address ?? "the agent wallet"} at https://faucet.0g.ai`
+            : `Inference failed: ${chat.error.message}`;
+      pushTrace("err", `inference failed`);
+    }
+
+    // Stream output line-by-line
+    const lines = replyText.split(/\n+/).filter(Boolean);
     for (const line of lines) {
       setOutput((o) => [...o, ""]);
-      for (let i = 0; i <= line.length; i += 3) {
-        await wait(12);
+      for (let i = 0; i <= line.length; i += 4) {
+        await wait(8);
         setOutput((o) => {
           const next = [...o];
           next[next.length - 1] = line.slice(0, i);
@@ -127,12 +111,25 @@ export function Atlas() {
       }
     }
 
+    // Persist research to encrypted memory
+    if (chat.ok && address) {
+      pushTrace("info", `committing research brief to encrypted memory`);
+      const c = await commitFn({
+        data: {
+          wallet: address,
+          role: "assistant",
+          text: `[atlas:${q}]\n${replyText}`,
+          sessionId: "atlas",
+        },
+      });
+      if (c.ok) pushTrace("ok", `manifest anchored · root ${c.rootHash.slice(0, 10)}…`);
+    }
+
     setWorking(false);
   }
 
   return (
     <div className="space-y-4">
-      {/* Query bar */}
       <div className="rounded-2xl border border-border bg-surface p-1">
         <div className="rounded-xl bg-background p-5">
           <div className="flex items-center justify-between">
@@ -142,15 +139,6 @@ export function Atlas() {
               </div>
               <h2 className="mt-0.5 font-display text-lg font-semibold">Atlas</h2>
             </div>
-            <label className="flex cursor-pointer items-center gap-2 font-mono text-[11px] text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={outage}
-                onChange={(e) => setOutage(e.target.checked)}
-                className="accent-foreground"
-              />
-              simulate 0G outage
-            </label>
           </div>
 
           <form
@@ -201,14 +189,9 @@ export function Atlas() {
 
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <ChainMap edges={edges} />
-        <RecallTrace
-          lines={trace}
-          title="Retrieval trace"
-          subtitle="Manifest · 0G index"
-        />
+        <RecallTrace lines={trace} title="Retrieval trace" subtitle="Manifest · 0G index" />
       </div>
 
-      {/* Output */}
       <div className="rounded-2xl border border-border bg-surface p-1">
         <div className="rounded-xl bg-background p-5">
           <div className="flex items-center justify-between">
