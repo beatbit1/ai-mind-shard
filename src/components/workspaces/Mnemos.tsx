@@ -56,6 +56,11 @@ export function Mnemos() {
   const statusFn = useServerFn(zgStatus);
 
   useEffect(() => {
+    setMessages(loadLocal());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeKey]);
+
+  useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, working]);
 
