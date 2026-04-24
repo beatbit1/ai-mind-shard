@@ -47,7 +47,7 @@ export function Mnemos() {
   const [returned, setReturned] = useState(false);
   const [trace, setTrace] = useState<TraceLine[]>([]);
   const [stats, setStats] = useState<TraceStats>({});
-  const [zgError, setZgError] = useState<string | null>(null);
+  const [, setZgError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const chatFn = useServerFn(chat0g);
