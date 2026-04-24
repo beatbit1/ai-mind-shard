@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { Link } from "@tanstack/react-router";
 import { WalletProviders } from "@/components/WalletProviders";
-import { SiteHeader } from "@/components/SiteHeader";
 import { Mnemos } from "@/components/workspaces/Mnemos";
 import { Atlas } from "@/components/workspaces/Atlas";
 
@@ -12,7 +13,17 @@ export default function AppShellClient() {
   return (
     <WalletProviders>
       <div className="min-h-screen bg-background text-foreground">
-        <SiteHeader />
+        <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-xl">
+          <div className="mx-auto flex h-16 max-w-[1400px] items-center justify-between px-6">
+            <Link to="/" className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-sm bg-foreground">
+                <div className="h-3 w-3 rounded-[2px] bg-background" />
+              </div>
+              <span className="font-display text-lg font-semibold tracking-tight">Tonara</span>
+            </Link>
+            <ConnectButton showBalance={false} chainStatus="icon" accountStatus="address" />
+          </div>
+        </header>
         <div className="mx-auto flex max-w-[1400px] gap-6 px-6 py-6">
           <aside className="w-56 shrink-0">
             <div className="rounded-2xl border border-border bg-surface p-2">

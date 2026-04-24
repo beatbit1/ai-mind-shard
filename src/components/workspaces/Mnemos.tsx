@@ -44,16 +44,21 @@ export function Mnemos() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [working, setWorking] = useState(false);
-  const [returned, setReturned] = useState(false);
+  const [returned] = useState(false);
   const [trace, setTrace] = useState<TraceLine[]>([]);
   const [stats, setStats] = useState<TraceStats>({});
-  const [zgError, setZgError] = useState<string | null>(null);
+  const [, setZgError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const chatFn = useServerFn(chat0g);
   const commitFn = useServerFn(commitMemory);
   const recallFn = useServerFn(recallMemories);
   const statusFn = useServerFn(zgStatus);
+
+  useEffect(() => {
+    setMessages(loadLocal());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeKey]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -216,15 +221,6 @@ export function Mnemos() {
     setWorking(false);
   }
 
-  function simulateReturn() {
-    saveLocal(messages);
-    setMessages([]);
-    setTrace([]);
-    setStats({});
-    setReturned(true);
-    // New session id so the next exchange is treated as a fresh session
-    localStorage.setItem(sessionKey, crypto.randomUUID());
-  }
 
   return (
     <div className="grid h-[calc(100vh-8rem)] gap-4 lg:grid-cols-[3fr_2fr]">
@@ -237,19 +233,7 @@ export function Mnemos() {
               </div>
               <h2 className="mt-0.5 font-display text-lg font-semibold">Mnemos</h2>
             </div>
-            <button
-              onClick={simulateReturn}
-              className="rounded-full border border-border px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            >
-              Simulate return after 2 days
-            </button>
           </div>
-
-          {zgError && (
-            <div className="border-b border-border bg-surface px-5 py-2 font-mono text-[11px] text-muted-foreground">
-              ⚠ {zgError}
-            </div>
-          )}
 
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-5">
             {messages.length === 0 && (
@@ -260,7 +244,7 @@ export function Mnemos() {
                 <p className="max-w-md text-sm text-muted-foreground">
                   {returned
                     ? "Ask anything — Mnemos will recall encrypted memories from 0G Storage."
-                    : "Solidity, EVM, ERC-4337, indexing, audits. Every exchange is encrypted and committed to 0G Storage; inference runs on 0G Compute and pays per call via OpenClaw."}
+                    : "Solidity, EVM, ERC-4337, indexing, audits. Every exchange is encrypted and persisted to decentralized memory; inference runs on the 0G network."}
                 </p>
                 <div className="mt-2 flex flex-wrap justify-center gap-2">
                   {(returned ? RECALL_SEEDS : SEEDS).map((s) => (
@@ -347,7 +331,7 @@ export function Mnemos() {
         </div>
       </div>
 
-      <RecallTrace lines={trace} stats={stats} title="0G runtime" subtitle="Compute · Storage · OpenClaw" />
+      <RecallTrace lines={trace} stats={stats} title="0G runtime" subtitle="Decentralized inference & memory" />
     </div>
   );
 }
