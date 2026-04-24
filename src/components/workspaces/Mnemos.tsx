@@ -44,7 +44,7 @@ export function Mnemos() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [working, setWorking] = useState(false);
-  const [returned, setReturned] = useState(false);
+  const [returned] = useState(false);
   const [trace, setTrace] = useState<TraceLine[]>([]);
   const [stats, setStats] = useState<TraceStats>({});
   const [, setZgError] = useState<string | null>(null);
@@ -216,15 +216,6 @@ export function Mnemos() {
     setWorking(false);
   }
 
-  function simulateReturn() {
-    saveLocal(messages);
-    setMessages([]);
-    setTrace([]);
-    setStats({});
-    setReturned(true);
-    // New session id so the next exchange is treated as a fresh session
-    localStorage.setItem(sessionKey, crypto.randomUUID());
-  }
 
   return (
     <div className="grid h-[calc(100vh-8rem)] gap-4 lg:grid-cols-[3fr_2fr]">
