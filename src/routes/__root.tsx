@@ -29,14 +29,18 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "Tonara" },
+      { name: "description", content: "AI agents store encrypted memories on decentralized storage, retrieving them securely when needed." },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "Tonara" },
+      { property: "og:description", content: "AI agents store encrypted memories on decentralized storage, retrieving them securely when needed." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Tonara" },
+      { name: "twitter:description", content: "AI agents store encrypted memories on decentralized storage, retrieving them securely when needed." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/a71a45cf-c20e-4050-b98f-bd078828969b/id-preview-121d62c6--87d69948-b977-4494-8c82-09c332c04eb4.lovable.app-1776859084256.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/a71a45cf-c20e-4050-b98f-bd078828969b/id-preview-121d62c6--87d69948-b977-4494-8c82-09c332c04eb4.lovable.app-1776859084256.png" },
     ],
     links: [
       {
