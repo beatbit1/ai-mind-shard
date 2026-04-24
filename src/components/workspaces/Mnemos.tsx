@@ -237,19 +237,7 @@ export function Mnemos() {
               </div>
               <h2 className="mt-0.5 font-display text-lg font-semibold">Mnemos</h2>
             </div>
-            <button
-              onClick={simulateReturn}
-              className="rounded-full border border-border px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            >
-              Simulate return after 2 days
-            </button>
           </div>
-
-          {zgError && (
-            <div className="border-b border-border bg-surface px-5 py-2 font-mono text-[11px] text-muted-foreground">
-              ⚠ {zgError}
-            </div>
-          )}
 
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-5">
             {messages.length === 0 && (
@@ -260,7 +248,7 @@ export function Mnemos() {
                 <p className="max-w-md text-sm text-muted-foreground">
                   {returned
                     ? "Ask anything — Mnemos will recall encrypted memories from 0G Storage."
-                    : "Solidity, EVM, ERC-4337, indexing, audits. Every exchange is encrypted and committed to 0G Storage; inference runs on 0G Compute and pays per call via OpenClaw."}
+                    : "Solidity, EVM, ERC-4337, indexing, audits. Every exchange is encrypted and persisted to decentralized memory; inference runs on the 0G network."}
                 </p>
                 <div className="mt-2 flex flex-wrap justify-center gap-2">
                   {(returned ? RECALL_SEEDS : SEEDS).map((s) => (
@@ -347,7 +335,7 @@ export function Mnemos() {
         </div>
       </div>
 
-      <RecallTrace lines={trace} stats={stats} title="0G runtime" subtitle="Compute · Storage · OpenClaw" />
+      <RecallTrace lines={trace} stats={stats} title="0G runtime" subtitle="Decentralized inference & memory" />
     </div>
   );
 }
