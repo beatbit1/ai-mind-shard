@@ -101,8 +101,9 @@ export const commitMemory = createServerFn({ method: "POST" })
       });
       const blob = encrypt(payload);
 
-      const { ZgFile } = await import("@0glabs/0g-ts-sdk");
-      const file = (ZgFile as any).fromBuffer ? (ZgFile as any).fromBuffer(blob) : new (ZgFile as any)(blob);
+      // Use MemData (in-memory) — ZgFile requires a real file descriptor and breaks on Workers
+      const { MemData } = await import("@0glabs/0g-ts-sdk");
+      const file = new (MemData as any)(blob);
 
       const [tree, treeErr] = await (file as any).merkleTree();
       if (treeErr) throw new Error(`merkleTree: ${treeErr}`);
