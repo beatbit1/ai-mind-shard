@@ -19,9 +19,9 @@ export async function ensureLedgerFunded(): Promise<{
     const asBig = typeof raw === "bigint" ? raw : BigInt(raw);
     balanceOG = Number(asBig) / 1e18;
   } catch {
-    await broker.ledger.addLedger(TOPUP_AMOUNT);
+    await broker.ledger.addLedger(INIT_AMOUNT);
     toppedUp = true;
-    balanceOG = TOPUP_AMOUNT;
+    balanceOG = INIT_AMOUNT;
     return { balanceOG, toppedUp };
   }
 
