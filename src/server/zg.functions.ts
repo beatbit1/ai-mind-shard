@@ -3,6 +3,7 @@ import {
   assertFunded,
   getBroker,
   getIndexer,
+  getProvider,
   getWallet,
   ZGNotConfiguredError,
   ZGUnfundedError,
