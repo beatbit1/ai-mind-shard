@@ -3,6 +3,7 @@ import {
   assertFunded,
   getBroker,
   getIndexer,
+  getProvider,
   getWallet,
   ZGNotConfiguredError,
   ZGUnfundedError,
@@ -100,8 +101,9 @@ export const commitMemory = createServerFn({ method: "POST" })
       });
       const blob = encrypt(payload);
 
-      const { ZgFile } = await import("@0glabs/0g-ts-sdk");
-      const file = (ZgFile as any).fromBuffer ? (ZgFile as any).fromBuffer(blob) : new (ZgFile as any)(blob);
+      // Use MemData (in-memory) — ZgFile requires a real file descriptor and breaks on Workers
+      const { MemData } = await import("@0glabs/0g-ts-sdk");
+      const file = new (MemData as any)(blob);
 
       const [tree, treeErr] = await (file as any).merkleTree();
       if (treeErr) throw new Error(`merkleTree: ${treeErr}`);
@@ -173,3 +175,90 @@ export const zgStatus = createServerFn({ method: "GET" }).handler(async () => {
     return { ok: false as const, error: toSafeError(e) };
   }
 });
+
+export const ledgerSnapshot = createServerFn({ method: "GET" }).handler(async () => {
+  try {
+    await assertFunded();
+    const wallet = getWallet();
+    const provider = getProvider();
+    const [walletWei, blockNumber, ledgerOG] = await Promise.all([
+      provider.getBalance(wallet.address),
+      provider.getBlockNumber(),
+      getLedgerBalanceOG().catch(() => 0),
+    ]);
+    let services: Array<{ provider: string; model: string; url: string }> = [];
+    try {
+      const broker = await getBroker();
+      const list: any[] = await broker.inference.listService();
+      services = list.slice(0, 10).map((s) => ({
+        provider: s.provider,
+        model: s.model,
+        url: s.url,
+      }));
+    } catch {
+      /* ignore */
+    }
+    return {
+      ok: true as const,
+      address: wallet.address,
+      walletOG: Number(walletWei) / 1e18,
+      ledgerOG,
+      blockNumber,
+      chainId: 16601,
+      services,
+      ts: Date.now(),
+    };
+  } catch (e) {
+    return { ok: false as const, error: toSafeError(e) };
+  }
+});
+
+export const listMemories = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => d as { rootHashes: string[] })
+  .handler(async ({ data }) => {
+    const t0 = Date.now();
+    try {
+      await assertFunded();
+      const indexer = await getIndexer();
+      const roots = data.rootHashes.slice(-50);
+      const items = await Promise.all(
+        roots.map(async (root) => {
+          const t1 = Date.now();
+          try {
+            const result: any = await (indexer as any).download(root, true);
+            const blob: Buffer = Buffer.isBuffer(result)
+              ? result
+              : result?.data
+                ? Buffer.from(result.data)
+                : Buffer.from(result);
+            const json = JSON.parse(decrypt(blob));
+            return {
+              rootHash: root,
+              role: json.role as "user" | "assistant",
+              sessionId: json.sessionId as string,
+              ts: json.ts as number,
+              sizeBytes: blob.length,
+              latencyMs: Date.now() - t1,
+              ok: true as const,
+            };
+          } catch (err) {
+            return {
+              rootHash: root,
+              ok: false as const,
+              error: err instanceof Error ? err.message : String(err),
+              latencyMs: Date.now() - t1,
+            };
+          }
+        }),
+      );
+      const good = items.filter((i: any) => i.ok);
+      return {
+        ok: true as const,
+        count: good.length,
+        items: items.sort((a: any, b: any) => (b.ts ?? 0) - (a.ts ?? 0)),
+        latencyMs: Date.now() - t0,
+      };
+    } catch (e) {
+      return { ok: false as const, error: toSafeError(e), latencyMs: Date.now() - t0 };
+    }
+  });

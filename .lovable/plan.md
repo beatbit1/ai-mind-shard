@@ -1,109 +1,103 @@
+# Plan — Live 0G Dashboard + Mnemos/Atlas Verification
 
+## What you'll get
 
-# Real 0G integration for Mnemos (Compute + Storage + OpenClaw)
+1. A new **Dashboard** tab in the workspace switcher (alongside Mnemos and Atlas) that shows **live data from 0G**, not localStorage:
+   - Agent wallet address + on-chain OG balance (testnet)
+   - **InferenceLedger balance** (real, polled every 15s)
+   - **On-chain memory record count** for your connected wallet
+   - **Recent records** table (last 10) with root hash, size, timestamp, and link to 0G chainscan
+   - Live status pill: `0G online` / `unfunded` / `not configured`
+2. A real verification run executed by me against the live 0G testnet, with the results pasted into chat as evidence (tx hashes, root hashes, ledger balance, inference latency, model used, verified=true/false).
+3. A short "what Mnemos does / what Atlas does / what to build next" section so you can hand it to a tester.
 
-## What we're building
+---
 
-Mnemos becomes a **real coding & blockchain research agent** that:
-- Chats via **0G Compute** running `llama-3.3-70b-instruct` (auto-discovered provider, no static URL needed)
-- Persists every exchange as **AES-256-GCM encrypted blobs on 0G Storage** (Galileo testnet, real merkle root)
-- Pays for inference + storage via **OpenClaw prepaid ledger** (real OG micropayments, surfaced in the trace)
-- Recalls past memories on return by listing the wallet's stored roots and downloading + decrypting them
+## Current state (verified by reading the code)
 
-No simulation left in Mnemos. Atlas stays simulated for now (separate task).
+- `ZG_PRIVATE_KEY` and `ZG_MEMORY_ENC_KEY` secrets are **already set** — the "not configured" warning won't appear anymore.
+- Server functions that already work and hit real 0G testnet:
+  - `chat0g` → 0G Compute broker, picks `llama-3.3-70b-instruct` or `deepseek-r1-70b`, returns `verified` flag from broker `processResponse`.
+  - `commitMemory` → AES-256-GCM encrypts, uploads via `Indexer.upload`, returns real `rootHash` + `txHash`.
+  - `recallMemories` → downloads by root hash, decrypts, returns memories.
+  - `zgStatus` → returns wallet address + ledger OG.
+- **Gap that makes the dashboard "feel dummy" today**: the list of root hashes is stored in `localStorage` per wallet. There is no server function that returns "all my records" from 0G directly, and no UI surface that shows them.
 
-## Secrets we need (just 2)
+## What I'll build
 
-When you approve, I'll trigger the secret prompt for:
-1. **`ZG_PRIVATE_KEY`** — funded Galileo testnet wallet private key (the 64-hex-char one starting with `0x`, NOT the address you sent). Needs ~0.1 OG from the faucet.
-2. **`ZG_MEMORY_ENC_KEY`** — 32-byte hex string for AES-256-GCM. I'll provide the exact `openssl rand -hex 32` command in the prompt; you paste the output.
+### 1. New server function: `listMemories`
+- Input: `{ wallet, rootHashes }` (root hashes still tracked client-side per wallet, but server now resolves them in parallel and returns metadata only — size, ts, role, sessionId — without exposing decrypted text in the dashboard list).
+- Reuses `getIndexer()` and `decrypt()`.
+- Returns `{ count, items: [{ rootHash, role, sessionId, ts, sizeBytes, latencyMs }] }`.
 
-Dropped: `ZG_COMPUTE_PROVIDER_URL` (auto-discovered) and `ZG_COMPUTE_API_SECRET` (per-request signed headers, no static secret exists).
+### 2. New server function: `ledgerSnapshot`
+- Returns `{ address, walletOG, ledgerOG, services: [{provider, model, url}], chainId, blockNumber }`.
+- Single round-trip for the dashboard header.
 
-## Architecture
-
-All 0G SDK calls run **server-side** in TanStack `createServerFn` handlers — the SDKs are Node-leaning and the private key must never reach the browser.
-
+### 3. New component: `src/components/workspaces/Dashboard.tsx`
+Layout:
 ```text
-Browser (Mnemos.tsx)
-   │  useServerFn(chat0g)        useServerFn(commitMemory)        useServerFn(recallMemories)
-   ▼                                ▼                                ▼
-src/server/zg.functions.ts  ──────────────────────────────────────────────
-   │                                │                                │
-   ▼                                ▼                                ▼
-0g-serving-broker SDK          @0glabs/0g-ts-sdk              @0glabs/0g-ts-sdk
-(inference + ledger)            Indexer + ZgFile                Indexer.download
-+ OpenClaw prepaid             → uploads encrypted blob        + AES-GCM decrypt
-ledger (auto-debit)            → returns rootHash + txHash
+┌─────────────────────────────────────────────────────────┐
+│  0G online · Galileo testnet · block #1234567           │
+├──────────────┬──────────────┬──────────────┬────────────┤
+│ Wallet OG    │ Ledger OG    │ Records      │ Providers  │
+│ 0.0421       │ 0.0500       │ 14           │ 3 online   │
+├──────────────┴──────────────┴──────────────┴────────────┤
+│  Recent records (last 10)                               │
+│  root 0x12ab…f4 · user · 412B · 2m ago · tx ↗          │
+│  root 0x9c3d…22 · assistant · 1.2KB · 2m ago · tx ↗    │
+│  …                                                      │
+└─────────────────────────────────────────────────────────┘
 ```
+- Polls `ledgerSnapshot` every 15s via TanStack Query.
+- Polls `listMemories` every 30s.
+- "Refresh now" button.
+- Empty state: "No records yet. Send your first message in Mnemos."
 
-## New / changed files
+### 4. Wire it into `AppShellClient.tsx`
+Add a third sidebar button "Dashboard · live 0G state" above Mnemos. Default landing tab becomes Dashboard so you see proof it's alive on first load.
 
-**Server (new):**
-- `src/server/zg.client.ts` — initializes wallet (`ethers`), `Indexer` (Turbo testnet), and `0g-serving-broker` once. Module-level singletons gated by `createServerOnlyFn`.
-- `src/server/zg.crypto.ts` — AES-256-GCM encrypt/decrypt helpers using `ZG_MEMORY_ENC_KEY`.
-- `src/server/zg.functions.ts` — three `createServerFn` endpoints:
-  - `chat0g({ messages })` → discovers `llama-3.3-70b-instruct` provider, generates signed auth headers via broker, calls OpenAI-compatible `/chat/completions`, returns assistant reply + provider/model/cost metadata.
-  - `commitMemory({ wallet, role, text, sessionId })` → encrypts payload, uploads via `Indexer.upload(zgFile)`, returns `{ rootHash, txHash, sizeBytes, latencyMs }`.
-  - `recallMemories({ wallet, limit })` → reads the wallet's memory index (a small JSON manifest stored at a deterministic path per wallet), downloads each blob, decrypts, returns the message list with per-shard latency + cost.
-- `src/server/zg.ledger.ts` — `ensureLedgerFunded()` helper that checks `broker.ledger.getLedger()` and tops up with `broker.ledger.depositFund(0.05)` if balance < threshold. Called lazily before each inference + download.
+### 5. Verification run (I do this after implementation, in the same turn)
+I'll call the deployed server functions with `invoke-server-function`:
+- `zgStatus` → confirm wallet + ledger
+- `chat0g` with a real prompt → confirm 200, model name, latency, verified flag
+- `commitMemory` with a known string → confirm rootHash + txHash
+- `recallMemories` with that rootHash → confirm decrypt round-trips
+- Paste the JSON evidence + a chainscan link for the tx into chat.
 
-**Frontend (refactor):**
-- `src/components/workspaces/Mnemos.tsx` — rewrite around the new server functions. Persona switches to **coding / blockchain research companion**. Seed prompts:
-  - *"Explain ERC-4337 account abstraction step by step"*
-  - *"Audit this Solidity function for reentrancy: …"*
-  - *"Index the last 10 swaps on Uniswap v4 pool 0x…"*
-  - *"What's the gas cost of CREATE2 vs CREATE in current EVM?"*
-  
-  On every send: call `commitMemory` (user msg) → `chat0g` (full thread) → `commitMemory` (assistant msg) → push real trace lines. The "Simulate return after 2 days" button now actually clears local state and calls `recallMemories(wallet)` — the agent replies referencing real decrypted prior context.
+If any call fails I fix it before reporting.
 
-- `src/components/workspaces/RecallTrace.tsx` — gains real fields: provider address, model, txHash (linkable to chainscan-galileo), rootHash. Already supports the shape.
+---
 
-**Deps to add:**
-- `@0glabs/0g-ts-sdk` — storage SDK
-- `@0glabs/0g-serving-broker` — compute SDK
-- `ethers` v6 — required by both SDKs
+## Functions of each agent (for the tester)
 
-## OpenClaw integration
+**Mnemos** — coding/blockchain research companion.
+- Every user message is encrypted (AES-256-GCM) and uploaded to 0G Storage → returns a root hash + tx hash on Galileo testnet.
+- Inference runs on 0G Compute (llama-3.3-70b or deepseek-r1-70b), with the broker's `processResponse` cryptographic verification.
+- Returning sessions with vague prompts ("what were we working on?") trigger a recall: client sends stored root hashes → server downloads + decrypts → injects as system context before inference.
+- Reply is also committed to 0G.
 
-Wired into `zg.ledger.ts`:
-1. On first server-fn call after deploy, `ensureLedgerFunded()` deposits 0.05 OG into the OpenClaw prepaid ledger via `broker.ledger.depositFund(0.05)`.
-2. Every subsequent inference call and storage download auto-debits from this balance — the broker handles the on-chain micropayment under the hood and returns the cost.
-3. We surface `broker.ledger.getLedger()` balance in the trace footer so judges see it tick down in real time (`ledger: 0.0479 OG`).
+**Atlas** — cross-chain on-chain intelligence agent.
+- Same 0G inference pipeline, different system prompt (research brief: protocol summary, on-chain signals, 3 risk flags).
+- The "shard fetch" animation across 0G/ETH/SOL is a UX visualization of the manifest dispatch; the actual research output and the final memory commit are real 0G calls.
+- Each finished brief is auto-committed to encrypted memory under `sessionId="atlas"` so it shows up in your dashboard count too.
 
-## Trace output (real, not simulated)
+---
 
-When you send a message, the right panel will show:
+## What's next for the smart-contract dev (mainnet)
 
-```text
-12:04:11 › encrypting · AES-256-GCM · 412B
-12:04:11 › uploading to 0G Storage · indexer.upload(zgFile)
-12:04:13 ✓ committed · root 0xa1b2…f9e0 · tx 0x7c4e…12ab · 1.84s
-12:04:13 › discovering inference provider · llama-3.3-70b-instruct
-12:04:13 › signing request headers · OpenClaw debit pending
-12:04:14 › POST /chat/completions · provider 0xf072…65Dd
-12:04:18 ✓ inference · 4.1s · 287 tokens · 0.00031 OG debited
-12:04:18 › encrypting reply · uploading
-12:04:19 ✓ committed · root 0xc3d4…aa11 · tx 0x9f81…ee02
-        ledger: 0.04959 OG · session: 2 memories
-```
+You already have the full function list in `SMART_CONTRACTS.md`. The dashboard I'm building is the **frontend that those contracts will eventually power** — once `MemoryRegistry.commit` and `InferenceLedger.balanceOf` are deployed on 0G mainnet, I just swap the data sources in `listMemories` and `ledgerSnapshot` from the testnet broker to the mainnet contract calls. No UI changes needed.
 
-## Verification plan
+Recommended next dev steps after this dashboard ships:
+1. Add a "Sessions" view that groups records by `sessionId` and lets you replay one.
+2. Add `revoke(rootHash)` once `MemoryRegistry` is on mainnet (today there's no on-chain revoke).
+3. Add per-message "verified ✓" badge in Mnemos using the broker verification result we already have but don't display.
 
-After implementation, I'll:
-1. Hit `/api/test-zg-storage` (a temporary `createServerFn`-backed route) to upload "hello world", get a real root hash, then download + decrypt — confirms storage round-trip works.
-2. Hit `/api/test-zg-inference` to call `llama-3.3-70b-instruct` with "say hi" — confirms compute + ledger debit works.
-3. Open Mnemos in the preview, send a message, watch trace, check the txHash links resolve on `chainscan-galileo.0g.ai`.
-4. Click "Simulate return", ask "what did we discuss?" — agent should reply with real recalled context from decrypted blobs.
-5. Remove the two test routes once verified.
+---
 
-I'll report back with the rootHash, txHash, ledger balance change, and a screenshot of the working trace.
+## Technical notes
 
-## Risks / fallbacks
-
-- **Worker runtime compatibility**: `@0glabs/0g-ts-sdk` uses `ethers` + some Node crypto. Both work under TanStack's `nodejs_compat` worker. If a specific submodule fails (e.g., a stream API), we narrow to the exact `Indexer` + `ZgFile` exports we need and stub the rest.
-- **Faucet blocked**: if you can't get OG tokens before we ship, integration code still deploys but server functions will return a clear "wallet unfunded — please fund 0x… on Galileo" error instead of crashing. Mnemos shows this inline.
-- **Provider downtime**: if `llama-3.3-70b-instruct` provider is offline, we fall back to `deepseek-r1-70b` automatically.
-
-Approve and I'll request the 2 secrets, then implement + verify end-to-end.
-
+- All new server functions live in `src/server/zg.functions.ts` and reuse the existing singletons in `zg.core.server.ts` — no new env vars.
+- Dashboard uses TanStack Query with `refetchInterval` for real-time polling; no websockets needed.
+- Root-hash list stays in `localStorage` for now (per-wallet) because there is no on-chain registry on testnet yet; this is the exact gap the mainnet `MemoryRegistry` contract closes.
+- No changes to wallet/connect flow — RainbowKit `ConnectButton` is already in the header and working; if you don't see it, it's because the `/app` route is `ssr: false` and the wallet provider mounts client-side after hydration.

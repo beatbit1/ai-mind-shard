@@ -4,11 +4,18 @@ import { Link } from "@tanstack/react-router";
 import { WalletProviders } from "@/components/WalletProviders";
 import { Mnemos } from "@/components/workspaces/Mnemos";
 import { Atlas } from "@/components/workspaces/Atlas";
+import { Dashboard } from "@/components/workspaces/Dashboard";
 
-type Workspace = "mnemos" | "atlas";
+type Workspace = "dashboard" | "mnemos" | "atlas";
+
+const TABS: Array<{ id: Workspace; label: string; sub: string }> = [
+  { id: "dashboard", label: "Dashboard", sub: "live · 0G state" },
+  { id: "mnemos", label: "Mnemos", sub: "coding · research" },
+  { id: "atlas", label: "Atlas", sub: "on-chain intel" },
+];
 
 export default function AppShellClient() {
-  const [active, setActive] = useState<Workspace>("mnemos");
+  const [active, setActive] = useState<Workspace>("dashboard");
 
   return (
     <WalletProviders>
@@ -27,36 +34,30 @@ export default function AppShellClient() {
         <div className="mx-auto flex max-w-[1400px] gap-6 px-6 py-6">
           <aside className="w-56 shrink-0">
             <div className="rounded-2xl border border-border bg-surface p-2">
-              <button
-                onClick={() => setActive("mnemos")}
-                className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
-                  active === "mnemos"
-                    ? "bg-foreground text-background"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Mnemos
-                <div className="mt-0.5 text-[10px] uppercase tracking-widest opacity-60">
-                  coding · research
-                </div>
-              </button>
-              <button
-                onClick={() => setActive("atlas")}
-                className={`mt-1 w-full rounded-xl px-3 py-2 text-left text-sm transition ${
-                  active === "atlas"
-                    ? "bg-foreground text-background"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Atlas
-                <div className="mt-0.5 text-[10px] uppercase tracking-widest opacity-60">
-                  on-chain intel
-                </div>
-              </button>
+              {TABS.map((t, i) => (
+                <button
+                  key={t.id}
+                  onClick={() => setActive(t.id)}
+                  className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                    i > 0 ? "mt-1" : ""
+                  } ${
+                    active === t.id
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {t.label}
+                  <div className="mt-0.5 text-[10px] uppercase tracking-widest opacity-60">
+                    {t.sub}
+                  </div>
+                </button>
+              ))}
             </div>
           </aside>
           <main className="min-w-0 flex-1">
-            {active === "mnemos" ? <Mnemos /> : <Atlas />}
+            {active === "dashboard" && <Dashboard />}
+            {active === "mnemos" && <Mnemos />}
+            {active === "atlas" && <Atlas />}
           </main>
         </div>
       </div>
