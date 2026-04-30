@@ -16,6 +16,17 @@ const SYSTEM_PROMPT = `You are Mnemos — a senior coding and blockchain researc
 
 type ChatMsg = { role: "system" | "user" | "assistant"; content: string };
 
+async function downloadRootBlob(indexer: any, root: string): Promise<Buffer> {
+  const { readFile, unlink } = await import("fs/promises");
+  const safeRoot = root.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24);
+  const filePath = `/tmp/tonara-${safeRoot}-${Date.now()}-${Math.random().toString(16).slice(2)}.bin`;
+  const err = await indexer.download(root, filePath, true);
+  if (err) throw new Error(`download: ${err.message ?? err}`);
+  const blob = await readFile(filePath);
+  await unlink(filePath).catch(() => {});
+  return Buffer.from(blob);
+}
+
 function toSafeError(e: unknown): { kind: string; message: string; address?: string } {
   if (e instanceof ZGNotConfiguredError) {
     return { kind: "not_configured", message: e.message };
