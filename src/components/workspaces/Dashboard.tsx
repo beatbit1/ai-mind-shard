@@ -252,6 +252,12 @@ export function Dashboard() {
               connect your wallet to scope memory records to your address
             </div>
           )}
+
+          {isConnected && !onZeroG && (
+            <div className="mt-4 rounded-xl border border-destructive/40 bg-surface px-4 py-3 text-center font-mono text-[11px] text-destructive">
+              wallet connected on chain {chainId}; switch to 0G Galileo chain {zeroGTestnet.id} for accurate network state
+            </div>
+          )}
         </div>
       </div>
 
@@ -285,26 +291,36 @@ export function Dashboard() {
               <table className="w-full text-sm">
                 <thead className="bg-surface text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
                   <tr>
-                    <th className="px-3 py-2">Root</th>
+                    <th className="px-3 py-2">Root hash</th>
+                    <th className="px-3 py-2">Tx hash</th>
+                    <th className="px-3 py-2">Proof</th>
                     <th className="px-3 py-2">Role</th>
                     <th className="px-3 py-2">Session</th>
-                    <th className="px-3 py-2">Size</th>
                     <th className="px-3 py-2">When</th>
-                    <th className="px-3 py-2">Latency</th>
                   </tr>
                 </thead>
                 <tbody>
                   {records.slice(0, 10).map((r) => (
                     <tr key={r.rootHash} className="border-t border-border">
                       <td className="px-3 py-2 font-mono text-[11px]">
-                        <a
-                          href={`https://chainscan-galileo.0g.ai/address/${r.rootHash}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="underline-offset-2 hover:underline"
-                        >
-                          {short(r.rootHash)}
-                        </a>
+                        {short(r.rootHash)}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-[11px]">
+                        {r.txHash ? (
+                          <a
+                            href={`https://chainscan-galileo.0g.ai/tx/${r.txHash}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline-offset-2 hover:underline"
+                          >
+                            {short(r.txHash)} ↗
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">indexed</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
+                        {r.ok ? `${r.locations?.length ?? 0} nodes · ${formatBytes(r.sizeBytes)}` : "—"}
                       </td>
                       <td className="px-3 py-2">
                         {r.ok ? (
@@ -318,14 +334,8 @@ export function Dashboard() {
                       <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
                         {r.ok ? short(r.sessionId) : "—"}
                       </td>
-                      <td className="px-3 py-2 font-mono text-[11px]">
-                        {r.ok ? formatBytes(r.sizeBytes) : "—"}
-                      </td>
                       <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
-                        {r.ok ? timeAgo(r.ts) : "—"}
-                      </td>
-                      <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
-                        {r.latencyMs}ms
+                        {r.ok ? `${timeAgo(r.ts)} · ${r.latencyMs}ms` : "—"}
                       </td>
                     </tr>
                   ))}
