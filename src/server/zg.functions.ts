@@ -47,12 +47,15 @@ export const chat0g = createServerFn({ method: "POST" })
       const lastUser = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
       const headers = await broker.inference.getRequestHeaders(chosen.provider, lastUser);
 
-      const res = await fetch(`${chosen.url}/v1/chat/completions`, {
+      // Some providers return baseURL with /v1 already appended; normalize.
+      const base = String(chosen.url).replace(/\/+$/, "").replace(/\/v1$/, "");
+      const endpoint = `${base}/v1/chat/completions`;
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ model: chosen.model, messages }),
       });
-      if (!res.ok) throw new Error(`Inference HTTP ${res.status}: ${await res.text()}`);
+      if (!res.ok) throw new Error(`Inference HTTP ${res.status} @ ${endpoint}: ${await res.text()}`);
       const json: any = await res.json();
       const reply: string = json.choices?.[0]?.message?.content ?? "";
       const chatId: string = json.id ?? "";
