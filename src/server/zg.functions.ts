@@ -182,22 +182,10 @@ export const ledgerSnapshot = createServerFn({ method: "GET" }).handler(async ()
     const wallet = getWallet();
     const provider = getProvider();
     const [walletWei, blockNumber, ledgerOG] = await Promise.all([
-      provider.getBalance(wallet.address),
-      provider.getBlockNumber(),
+      provider.getBalance(wallet.address).catch(() => 0n),
+      provider.getBlockNumber().catch(() => 0),
       getLedgerBalanceOG().catch(() => 0),
     ]);
-    let services: Array<{ provider: string; model: string; url: string }> = [];
-    try {
-      const broker = await getBroker();
-      const list: any[] = await broker.inference.listService();
-      services = list.slice(0, 10).map((s) => ({
-        provider: s.provider,
-        model: s.model,
-        url: s.url,
-      }));
-    } catch {
-      /* ignore */
-    }
     return {
       ok: true as const,
       address: wallet.address,
@@ -205,8 +193,40 @@ export const ledgerSnapshot = createServerFn({ method: "GET" }).handler(async ()
       ledgerOG,
       blockNumber,
       chainId: 16602,
-      services,
       ts: Date.now(),
+    };
+  } catch (e) {
+    // Always return a safe envelope — never let createServerFn surface a 500.
+    if (e instanceof ZGNotConfiguredError || e instanceof ZGUnfundedError) {
+      return { ok: false as const, error: toSafeError(e) };
+    }
+    // Even if the wallet is unfunded, expose its address so the user can fund it.
+    let address = "";
+    try {
+      address = getWallet().address;
+    } catch {
+      /* ignore */
+    }
+    return {
+      ok: false as const,
+      error: toSafeError(e),
+      address,
+    };
+  }
+});
+
+export const listInferenceProviders = createServerFn({ method: "GET" }).handler(async () => {
+  try {
+    await assertFunded();
+    const broker = await getBroker();
+    const list: any[] = await broker.inference.listService();
+    return {
+      ok: true as const,
+      services: list.slice(0, 10).map((s) => ({
+        provider: s.provider,
+        model: s.model,
+        url: s.url,
+      })),
     };
   } catch (e) {
     return { ok: false as const, error: toSafeError(e) };
