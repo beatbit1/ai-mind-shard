@@ -1,28 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import { useServerFn } from "@tanstack/react-start";
-import { ledgerSnapshot, listMemories } from "@/server/zg.functions";
+import { ledgerSnapshot, listInferenceProviders, listMemories } from "@/server/zg.functions";
 
 const ROOTS_PREFIX = "tonara.mnemos.roots.";
+
+type SnapshotData = {
+  address: string;
+  walletOG: number;
+  ledgerOG: number;
+  blockNumber: number;
+  chainId: number;
+  ts: number;
+};
 
 type SnapshotState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "ok"; data: Awaited<ReturnType<typeof callOk>> }
-  | { status: "err"; message: string };
+  | { status: "ok"; data: SnapshotData }
+  | { status: "err"; message: string; address?: string };
 
-// helper type
-async function callOk() {
-  return {} as {
-    address: string;
-    walletOG: number;
-    ledgerOG: number;
-    blockNumber: number;
-    chainId: number;
-    services: Array<{ provider: string; model: string; url: string }>;
-    ts: number;
-  };
-}
+type ProviderItem = { provider: string; model: string; url: string };
 
 type RecordItem =
   | {
@@ -42,13 +40,16 @@ export function Dashboard() {
   const rootsKey = useMemo(() => ROOTS_PREFIX + wallet, [wallet]);
 
   const snapshotFn = useServerFn(ledgerSnapshot);
+  const providersFn = useServerFn(listInferenceProviders);
   const listFn = useServerFn(listMemories);
 
-  const [snap, setSnap] = useState<SnapshotState>({ status: "idle" });
+  const [snap, setSnap] = useState<SnapshotState>({ status: "loading" });
+  const [providers, setProviders] = useState<ProviderItem[]>([]);
   const [records, setRecords] = useState<RecordItem[]>([]);
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [recordsErr, setRecordsErr] = useState<string | null>(null);
   const [lastFetched, setLastFetched] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
 
   function getRoots(): string[] {
     try {
@@ -59,13 +60,25 @@ export function Dashboard() {
   }
 
   async function refreshSnapshot() {
-    setSnap((s) => (s.status === "ok" ? s : { status: "loading" }));
-    const r = await snapshotFn({});
-    if (r.ok) {
-      setSnap({ status: "ok", data: r as any });
-      setLastFetched(Date.now());
-    } else {
-      setSnap({ status: "err", message: r.error.message });
+    try {
+      const r: any = await snapshotFn({});
+      if (r.ok) {
+        setSnap({ status: "ok", data: r as SnapshotData });
+        setLastFetched(Date.now());
+      } else {
+        setSnap({ status: "err", message: r.error?.message ?? "unknown", address: r.address });
+      }
+    } catch (e) {
+      setSnap({ status: "err", message: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  async function refreshProviders() {
+    try {
+      const r: any = await providersFn({});
+      if (r.ok) setProviders(r.services);
+    } catch {
+      /* ignore */
     }
   }
 
@@ -77,17 +90,20 @@ export function Dashboard() {
     }
     setRecordsLoading(true);
     setRecordsErr(null);
-    const r = await listFn({ data: { rootHashes: roots } });
-    setRecordsLoading(false);
-    if (r.ok) {
-      setRecords(r.items as RecordItem[]);
-    } else {
-      setRecordsErr(r.error.message);
+    try {
+      const r: any = await listFn({ data: { rootHashes: roots } });
+      if (r.ok) setRecords(r.items as RecordItem[]);
+      else setRecordsErr(r.error.message);
+    } catch (e) {
+      setRecordsErr(e instanceof Error ? e.message : String(e));
     }
+    setRecordsLoading(false);
   }
 
   useEffect(() => {
+    // Snapshot is fast — do it first. Providers + records run in background.
     refreshSnapshot();
+    refreshProviders();
     refreshRecords();
     const a = setInterval(refreshSnapshot, 15_000);
     const b = setInterval(refreshRecords, 30_000);
@@ -100,30 +116,40 @@ export function Dashboard() {
 
   const ok = snap.status === "ok" ? snap.data : null;
   const okCount = records.filter((r) => r.ok).length;
+  const agentAddress = ok?.address ?? (snap.status === "err" ? snap.address ?? "" : "");
+  const needsFunding = ok ? ok.walletOG < 0.5 : false;
 
   const statusPill =
     snap.status === "ok"
-      ? { label: "0G online", tone: "ok" as const }
+      ? needsFunding
+        ? { label: "agent wallet low", tone: "warn" as const }
+        : { label: "0G online", tone: "ok" as const }
       : snap.status === "err"
         ? snap.message.toLowerCase().includes("not configured")
           ? { label: "not configured", tone: "warn" as const }
-          : snap.message.toLowerCase().includes("unfunded") || snap.message.toLowerCase().includes("balance")
-            ? { label: "wallet unfunded", tone: "warn" as const }
-            : { label: "0G error", tone: "err" as const }
-        : { label: "checking…", tone: "muted" as const };
+          : { label: "0G error", tone: "err" as const }
+        : { label: "loading…", tone: "muted" as const };
+
+  function copyAddress() {
+    if (!agentAddress) return;
+    navigator.clipboard.writeText(agentAddress);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto w-full max-w-7xl space-y-4">
+      {/* HEADER + STATS */}
       <div className="rounded-2xl border border-border bg-surface p-1">
-        <div className="rounded-xl bg-background p-5">
-          <div className="flex items-center justify-between">
+        <div className="rounded-xl bg-background p-5 lg:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                Live 0G state · Galileo testnet
+                Live 0G state · Galileo testnet · chain 16602
               </div>
-              <h2 className="mt-0.5 font-display text-lg font-semibold">Dashboard</h2>
+              <h2 className="mt-0.5 font-display text-lg font-semibold lg:text-xl">Dashboard</h2>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <Pill tone={statusPill.tone}>{statusPill.label}</Pill>
               {ok && (
                 <span className="font-mono text-[11px] text-muted-foreground">
@@ -133,6 +159,7 @@ export function Dashboard() {
               <button
                 onClick={() => {
                   refreshSnapshot();
+                  refreshProviders();
                   refreshRecords();
                 }}
                 className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
@@ -142,12 +169,17 @@ export function Dashboard() {
             </div>
           </div>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Stat
               label="Agent wallet"
-              value={ok ? `${ok.walletOG.toFixed(4)} OG` : "—"}
-              sub={ok ? short(ok.address) : "loading"}
-              link={ok ? `https://chainscan-galileo.0g.ai/address/${ok.address}` : undefined}
+              value={ok ? `${ok.walletOG.toFixed(4)} OG` : snap.status === "loading" ? "…" : "—"}
+              sub={ok ? short(ok.address) : agentAddress ? short(agentAddress) : "loading"}
+              link={
+                ok || agentAddress
+                  ? `https://chainscan-galileo.0g.ai/address/${ok?.address ?? agentAddress}`
+                  : undefined
+              }
+              tone={needsFunding ? "warn" : undefined}
             />
             <Stat
               label="Inference ledger"
@@ -161,12 +193,50 @@ export function Dashboard() {
             />
             <Stat
               label="Inference providers"
-              value={ok ? String(ok.services.length) : "—"}
-              sub={ok && ok.services[0] ? ok.services[0].model : "discovering"}
+              value={providers.length > 0 ? String(providers.length) : "…"}
+              sub={providers[0] ? providers[0].model : "discovering"}
             />
           </div>
 
-          {snap.status === "err" && (
+          {/* Funding CTA — the agent hot wallet is what pays for storage + inference */}
+          {agentAddress && (needsFunding || snap.status === "err") && (
+            <div className="mt-4 rounded-xl border border-yellow-500/40 bg-yellow-500/5 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-mono text-[10px] uppercase tracking-widest text-yellow-500">
+                    Action needed · agent wallet under-funded
+                  </div>
+                  <p className="mt-1 max-w-2xl text-sm text-foreground">
+                    Tonara's agent wallet pays for every 0G Storage upload and inference call.
+                    It needs at least <span className="font-medium">3 OG</span> to open the
+                    inference ledger and a topup of <span className="font-medium">~1 OG</span>{" "}
+                    for ongoing calls. Your personal wallet's balance does not count.
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 font-mono text-[11px]">
+                    <span className="rounded-md border border-border bg-surface px-2 py-1">
+                      {agentAddress}
+                    </span>
+                    <button
+                      onClick={copyAddress}
+                      className="rounded-md border border-border px-2 py-1 text-foreground transition-colors hover:bg-secondary"
+                    >
+                      {copied ? "✓ copied" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+                <a
+                  href="https://faucet.0g.ai"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="shrink-0 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-opacity hover:opacity-90"
+                >
+                  Open 0G faucet ↗
+                </a>
+              </div>
+            </div>
+          )}
+
+          {snap.status === "err" && !needsFunding && (
             <div className="mt-4 rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted-foreground">
               <span className="text-foreground">0G error:</span> {snap.message}
             </div>
@@ -174,20 +244,21 @@ export function Dashboard() {
 
           {!isConnected && (
             <div className="mt-4 rounded-xl border border-border bg-surface px-4 py-3 text-center font-mono text-[11px] text-muted-foreground">
-              connect your wallet to scope records to your address
+              connect your wallet to scope memory records to your address
             </div>
           )}
         </div>
       </div>
 
+      {/* RECORDS TABLE */}
       <div className="rounded-2xl border border-border bg-surface p-1">
-        <div className="rounded-xl bg-background p-5">
+        <div className="rounded-xl bg-background p-5 lg:p-6">
           <div className="flex items-center justify-between">
             <div>
               <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
                 Recent on-chain memory records
               </div>
-              <h3 className="mt-0.5 font-display text-base font-semibold">
+              <h3 className="mt-0.5 font-display text-base font-semibold lg:text-lg">
                 Last {Math.min(records.length, 10)} of {records.length}
               </h3>
             </div>
@@ -198,12 +269,12 @@ export function Dashboard() {
             )}
           </div>
 
-          <div className="mt-3 overflow-hidden rounded-xl border border-border">
+          <div className="mt-3 overflow-x-auto rounded-xl border border-border">
             {records.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-muted-foreground">
                 {recordsLoading
                   ? "fetching from 0G Storage…"
-                  : "No records yet. Send your first message in Mnemos or run a query in Atlas."}
+                  : "No records yet. Fund the agent wallet, then send a message in Mnemos or run a query in Atlas."}
               </div>
             ) : (
               <table className="w-full text-sm">
@@ -260,14 +331,14 @@ export function Dashboard() {
         </div>
       </div>
 
-      {ok && ok.services.length > 0 && (
+      {providers.length > 0 && (
         <div className="rounded-2xl border border-border bg-surface p-1">
-          <div className="rounded-xl bg-background p-5">
+          <div className="rounded-xl bg-background p-5 lg:p-6">
             <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
               Inference providers online
             </div>
-            <div className="mt-3 space-y-1">
-              {ok.services.slice(0, 6).map((s) => (
+            <div className="mt-3 grid gap-1.5 md:grid-cols-2">
+              {providers.slice(0, 6).map((s) => (
                 <div
                   key={s.provider}
                   className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[11px]"
@@ -289,18 +360,30 @@ function Stat({
   value,
   sub,
   link,
+  tone,
 }: {
   label: string;
   value: string;
   sub?: string;
   link?: string;
+  tone?: "warn";
 }) {
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
+    <div
+      className={`rounded-xl border bg-surface p-4 ${
+        tone === "warn" ? "border-yellow-500/40" : "border-border"
+      }`}
+    >
       <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
         {label}
       </div>
-      <div className="mt-1 font-display text-2xl font-semibold tabular-nums">{value}</div>
+      <div
+        className={`mt-1 font-display text-2xl font-semibold tabular-nums ${
+          tone === "warn" ? "text-yellow-500" : ""
+        }`}
+      >
+        {value}
+      </div>
       {sub && (
         <div className="mt-0.5 font-mono text-[10.5px] text-muted-foreground">
           {link ? (
