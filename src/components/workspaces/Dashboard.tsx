@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useChainId } from "wagmi";
 import { useServerFn } from "@tanstack/react-start";
 import { ledgerSnapshot, listInferenceProviders, listMemories } from "@/server/zg.functions";
-
-const ROOTS_PREFIX = "tonara.mnemos.roots.";
+import { getMemoryRecordRefs, getMemoryRoots, type MemoryRecordRef } from "@/lib/memoryRecords";
+import { zeroGTestnet } from "@/lib/wallet";
 
 type SnapshotData = {
   address: string;
@@ -30,14 +30,18 @@ type RecordItem =
       sessionId: string;
       ts: number;
       sizeBytes: number;
+      txHash?: string;
+      proof?: MemoryRecordRef;
+      locations?: Array<{ url: string; shardId: number | null }>;
       latencyMs: number;
     }
-  | { ok: false; rootHash: string; error: string; latencyMs: number };
+  | { ok: false; rootHash: string; txHash?: string; error: string; latencyMs: number };
 
 export function Dashboard() {
   const { isConnected, address } = useAccount();
+  const chainId = useChainId();
   const wallet = address ?? "guest";
-  const rootsKey = useMemo(() => ROOTS_PREFIX + wallet, [wallet]);
+  const onZeroG = chainId === zeroGTestnet.id;
 
   const snapshotFn = useServerFn(ledgerSnapshot);
   const providersFn = useServerFn(listInferenceProviders);
@@ -50,14 +54,6 @@ export function Dashboard() {
   const [recordsErr, setRecordsErr] = useState<string | null>(null);
   const [lastFetched, setLastFetched] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
-
-  function getRoots(): string[] {
-    try {
-      return JSON.parse(localStorage.getItem(rootsKey) ?? "[]");
-    } catch {
-      return [];
-    }
-  }
 
   async function refreshSnapshot() {
     try {
@@ -83,7 +79,9 @@ export function Dashboard() {
   }
 
   async function refreshRecords() {
-    const roots = getRoots();
+    const roots = getMemoryRoots(wallet);
+    const refs = getMemoryRecordRefs(wallet);
+    const refByRoot = new Map(refs.map((r) => [r.rootHash, r]));
     if (roots.length === 0) {
       setRecords([]);
       return;
@@ -92,7 +90,14 @@ export function Dashboard() {
     setRecordsErr(null);
     try {
       const r: any = await listFn({ data: { rootHashes: roots } });
-      if (r.ok) setRecords(r.items as RecordItem[]);
+      if (r.ok) {
+        setRecords(
+          (r.items as RecordItem[]).map((item) => {
+            const ref = refByRoot.get(item.rootHash);
+            return item.ok ? { ...item, txHash: ref?.txHash, proof: ref } : { ...item, txHash: ref?.txHash };
+          }),
+        );
+      }
       else setRecordsErr(r.error.message);
     } catch (e) {
       setRecordsErr(e instanceof Error ? e.message : String(e));
