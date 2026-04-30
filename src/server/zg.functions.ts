@@ -204,7 +204,7 @@ export const ledgerSnapshot = createServerFn({ method: "GET" }).handler(async ()
       walletOG: Number(walletWei) / 1e18,
       ledgerOG,
       blockNumber,
-      chainId: 16601,
+      chainId: 16602,
       services,
       ts: Date.now(),
     };
