@@ -164,12 +164,7 @@ export const recallMemories = createServerFn({ method: "POST" })
       for (const root of data.rootHashes.slice(-20)) {
         const ts0 = Date.now();
         try {
-          const result: any = await (indexer as any).download(root, true);
-          const blob: Buffer = Buffer.isBuffer(result)
-            ? result
-            : result?.data
-              ? Buffer.from(result.data)
-              : Buffer.from(result);
+          const blob = await downloadRootBlob(indexer, root);
           const json = JSON.parse(decrypt(blob));
           memories.push({
             rootHash: root,
@@ -267,19 +262,17 @@ export const listMemories = createServerFn({ method: "POST" })
         roots.map(async (root) => {
           const t1 = Date.now();
           try {
-            const result: any = await (indexer as any).download(root, true);
-            const blob: Buffer = Buffer.isBuffer(result)
-              ? result
-              : result?.data
-                ? Buffer.from(result.data)
-                : Buffer.from(result);
+            const blob = await downloadRootBlob(indexer, root);
             const json = JSON.parse(decrypt(blob));
+            const locations = await (indexer as any).getFileLocations(root).catch(() => []);
             return {
               rootHash: root,
               role: json.role as "user" | "assistant",
               sessionId: json.sessionId as string,
               ts: json.ts as number,
               sizeBytes: blob.length,
+              wallet: json.wallet as string,
+              locations: locations.map((n: any) => ({ url: n.url, shardId: n.shardId ?? n.shard_id ?? null })),
               latencyMs: Date.now() - t1,
               ok: true as const,
             };
