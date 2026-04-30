@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Link } from "@tanstack/react-router";
+import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { WalletProviders } from "@/components/WalletProviders";
 import { Mnemos } from "@/components/workspaces/Mnemos";
 import { Atlas } from "@/components/workspaces/Atlas";
 import { Dashboard } from "@/components/workspaces/Dashboard";
+import { zeroGTestnet } from "@/lib/wallet";
 
 type Workspace = "dashboard" | "mnemos" | "atlas";
 
@@ -28,7 +30,7 @@ export default function AppShellClient() {
               </div>
               <span className="font-display text-lg font-semibold tracking-tight">Tonara</span>
             </Link>
-            <ConnectButton showBalance={false} chainStatus="icon" accountStatus="address" />
+            <WalletStatus />
           </div>
         </header>
         <div className="mx-auto flex max-w-[1400px] gap-6 px-6 py-6">
@@ -63,4 +65,38 @@ export default function AppShellClient() {
       </div>
     </WalletProviders>
   );
+}
+
+function WalletStatus() {
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const { switchChain, isPending } = useSwitchChain();
+  const onZeroG = chainId === zeroGTestnet.id;
+
+  return (
+    <div className="flex items-center gap-2">
+      {isConnected && address && (
+        <div className="hidden items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[11px] md:flex">
+          <span className={onZeroG ? "text-foreground" : "text-destructive"}>
+            {onZeroG ? "0G Galileo" : `chain ${chainId}`}
+          </span>
+          <span className="text-muted-foreground">{short(address)}</span>
+        </div>
+      )}
+      {isConnected && !onZeroG && (
+        <button
+          onClick={() => switchChain({ chainId: zeroGTestnet.id })}
+          disabled={isPending}
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground transition-colors hover:bg-secondary disabled:opacity-50"
+        >
+          {isPending ? "Switching…" : "Switch to 0G"}
+        </button>
+      )}
+      <ConnectButton showBalance={false} chainStatus="none" accountStatus="address" />
+    </div>
+  );
+}
+
+function short(s: string) {
+  return s.length > 14 ? `${s.slice(0, 8)}…${s.slice(-4)}` : s;
 }
