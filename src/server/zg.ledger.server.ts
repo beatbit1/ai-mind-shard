@@ -2,8 +2,8 @@ import { getBroker } from "./zg.core.server";
 
 // 0G testnet enforces a 3 OG minimum to create the ledger account
 const INIT_AMOUNT = 3;
-const TOPUP_AMOUNT = 1;
-const MIN_BALANCE = 0.5;
+const TOPUP_AMOUNT = 0.25;
+const MIN_BALANCE = 0.05;
 
 export async function ensureLedgerFunded(): Promise<{
   balanceOG: number;

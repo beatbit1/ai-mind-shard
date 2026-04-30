@@ -16,6 +16,17 @@ const SYSTEM_PROMPT = `You are Mnemos — a senior coding and blockchain researc
 
 type ChatMsg = { role: "system" | "user" | "assistant"; content: string };
 
+async function downloadRootBlob(indexer: any, root: string): Promise<Buffer> {
+  const { readFile, unlink } = await import("fs/promises");
+  const safeRoot = root.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24);
+  const filePath = `/tmp/tonara-${safeRoot}-${Date.now()}-${Math.random().toString(16).slice(2)}.bin`;
+  const err = await indexer.download(root, filePath, true);
+  if (err) throw new Error(`download: ${err.message ?? err}`);
+  const blob = await readFile(filePath);
+  await unlink(filePath).catch(() => {});
+  return Buffer.from(blob);
+}
+
 function toSafeError(e: unknown): { kind: string; message: string; address?: string } {
   if (e instanceof ZGNotConfiguredError) {
     return { kind: "not_configured", message: e.message };
@@ -42,27 +53,30 @@ export const chat0g = createServerFn({ method: "POST" })
       if (!chosen) throw new Error("No 0G inference providers available");
 
       await broker.inference.acknowledgeProviderSigner(chosen.provider).catch(() => {});
+      const meta = await broker.inference.getServiceMetadata(chosen.provider).catch(() => null);
+      const model = meta?.model ?? chosen.model;
 
       const messages: ChatMsg[] = [{ role: "system", content: SYSTEM_PROMPT }, ...data.messages];
       const lastUser = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
       const headers = await broker.inference.getRequestHeaders(chosen.provider, lastUser);
 
-      // Some providers return baseURL with /v1 already appended; normalize.
-      const base = String(chosen.url).replace(/\/+$/, "").replace(/\/v1$/, "");
-      const endpoint = `${base}/v1/chat/completions`;
+      // Broker metadata returns the OpenAI-compatible endpoint, usually /v1/proxy.
+      const endpointBase = String(meta?.endpoint ?? chosen.url).replace(/\/+$/, "");
+      const endpoint = `${endpointBase}/chat/completions`;
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ model: chosen.model, messages }),
+        body: JSON.stringify({ model, messages }),
       });
       if (!res.ok) throw new Error(`Inference HTTP ${res.status} @ ${endpoint}: ${await res.text()}`);
       const json: any = await res.json();
       const reply: string = json.choices?.[0]?.message?.content ?? "";
       const chatId: string = json.id ?? "";
+      if (!reply.trim()) throw new Error(`Inference returned empty response @ ${endpoint}`);
 
       let valid = true;
       try {
-        valid = await broker.inference.processResponse(chosen.provider, reply, chatId);
+        valid = await broker.inference.processResponse(chosen.provider, chatId, reply);
       } catch {
         valid = false;
       }
@@ -72,7 +86,7 @@ export const chat0g = createServerFn({ method: "POST" })
         ok: true as const,
         reply,
         provider: chosen.provider,
-        model: chosen.model,
+        model,
         latencyMs: Date.now() - t0,
         ledgerOG,
         verified: valid,
@@ -112,13 +126,18 @@ export const commitMemory = createServerFn({ method: "POST" })
       if (treeErr) throw new Error(`merkleTree: ${treeErr}`);
       const rootHash: string = tree.rootHash();
 
+      const proof = tree.proofAt(0);
       const [tx, upErr] = await (indexer as any).upload(file, "https://evmrpc-testnet.0g.ai", wallet);
       if (upErr) throw new Error(`upload: ${upErr}`);
+      const txHash = typeof tx === "string" ? tx : (tx?.txHash ?? tx?.hash ?? "");
+      const locations = await (indexer as any).getFileLocations(rootHash).catch(() => []);
 
       return {
         ok: true as const,
         rootHash,
-        txHash: typeof tx === "string" ? tx : (tx?.hash ?? ""),
+        txHash,
+        proof: { lemma: proof.lemma, path: proof.path, segments: file.numSegments() },
+        locations: locations.map((n: any) => ({ url: n.url, shardId: n.shardId ?? n.shard_id ?? null })),
         sizeBytes: blob.length,
         latencyMs: Date.now() - t0,
       };
@@ -145,12 +164,7 @@ export const recallMemories = createServerFn({ method: "POST" })
       for (const root of data.rootHashes.slice(-20)) {
         const ts0 = Date.now();
         try {
-          const result: any = await (indexer as any).download(root, true);
-          const blob: Buffer = Buffer.isBuffer(result)
-            ? result
-            : result?.data
-              ? Buffer.from(result.data)
-              : Buffer.from(result);
+          const blob = await downloadRootBlob(indexer, root);
           const json = JSON.parse(decrypt(blob));
           memories.push({
             rootHash: root,
@@ -248,19 +262,17 @@ export const listMemories = createServerFn({ method: "POST" })
         roots.map(async (root) => {
           const t1 = Date.now();
           try {
-            const result: any = await (indexer as any).download(root, true);
-            const blob: Buffer = Buffer.isBuffer(result)
-              ? result
-              : result?.data
-                ? Buffer.from(result.data)
-                : Buffer.from(result);
+            const blob = await downloadRootBlob(indexer, root);
             const json = JSON.parse(decrypt(blob));
+            const locations = await (indexer as any).getFileLocations(root).catch(() => []);
             return {
               rootHash: root,
               role: json.role as "user" | "assistant",
               sessionId: json.sessionId as string,
               ts: json.ts as number,
               sizeBytes: blob.length,
+              wallet: json.wallet as string,
+              locations: locations.map((n: any) => ({ url: n.url, shardId: n.shardId ?? n.shard_id ?? null })),
               latencyMs: Date.now() - t1,
               ok: true as const,
             };

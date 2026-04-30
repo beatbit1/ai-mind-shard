@@ -8,6 +8,7 @@ import {
   ts,
 } from "./RecallTrace";
 import { chat0g, commitMemory, recallMemories, zgStatus } from "@/server/zg.functions";
+import { appendMemoryRecord, getMemoryRoots } from "@/lib/memoryRecords";
 
 type Msg = {
   id: string;
@@ -31,14 +32,12 @@ const RECALL_SEEDS = [
 ];
 
 const STORE_PREFIX = "tonara.mnemos.v2.";
-const ROOTS_PREFIX = "tonara.mnemos.roots.";
 const SESSION_PREFIX = "tonara.mnemos.session.";
 
 export function Mnemos() {
   const { isConnected, address } = useAccount();
   const wallet = address ?? "guest";
   const storeKey = useMemo(() => STORE_PREFIX + wallet, [wallet]);
-  const rootsKey = useMemo(() => ROOTS_PREFIX + wallet, [wallet]);
   const sessionKey = useMemo(() => SESSION_PREFIX + wallet, [wallet]);
 
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -82,18 +81,6 @@ export function Mnemos() {
     setTrace((t) => [...t, { t: ts(), level, msg }]);
   }
 
-  function getRoots(): string[] {
-    try {
-      return JSON.parse(localStorage.getItem(rootsKey) ?? "[]");
-    } catch {
-      return [];
-    }
-  }
-  function appendRoot(root: string) {
-    const list = getRoots();
-    list.push(root);
-    localStorage.setItem(rootsKey, JSON.stringify(list.slice(-100)));
-  }
   function getSessionId(): string {
     let s = localStorage.getItem(sessionKey);
     if (!s) {
@@ -124,6 +111,7 @@ export function Mnemos() {
     setInput("");
     setWorking(true);
     setTrace([]);
+    const sessionId = getSessionId();
 
     const userMsg: Msg = { id: crypto.randomUUID(), role: "user", text: trimmed };
     let next = [...messages, userMsg];
@@ -133,14 +121,23 @@ export function Mnemos() {
     pushTrace("info", `encrypting · AES-256-GCM · ${new TextEncoder().encode(trimmed).length}B`);
     pushTrace("info", "uploading to 0G Storage · indexer.upload(zgFile)");
     const commitUser = await commitFn({
-      data: { wallet, role: "user", text: trimmed, sessionId: getSessionId() },
+      data: { wallet, role: "user", text: trimmed, sessionId },
     });
 
     if (commitUser.ok) {
-      appendRoot(commitUser.rootHash);
+      appendMemoryRecord(wallet, {
+        rootHash: commitUser.rootHash,
+        txHash: commitUser.txHash,
+        role: "user",
+        sessionId,
+        ts: Date.now(),
+        sizeBytes: commitUser.sizeBytes,
+        source: "mnemos",
+      });
       userMsg.rootHash = commitUser.rootHash;
       userMsg.txHash = commitUser.txHash;
-      pushTrace("ok", `committed · root ${short(commitUser.rootHash)} · ${commitUser.latencyMs}ms`);
+      setMessages([...next]);
+      pushTrace("ok", `committed · root ${short(commitUser.rootHash)} · tx ${short(commitUser.txHash)} · ${commitUser.latencyMs}ms`);
       setStats({
         latency: `${commitUser.latencyMs} ms`,
         shards: "1",
@@ -157,7 +154,7 @@ export function Mnemos() {
     const isVague =
       returned && (trimmed.length < 50 || /last|remember|earlier|before|continue|recap|summari/i.test(trimmed));
     if (isVague) {
-      const roots = getRoots();
+        const roots = getMemoryRoots(wallet);
       if (roots.length > 0) {
         pushTrace("info", `recalling ${Math.min(roots.length, 20)} memories from 0G`);
         const r = await recallFn({ data: { rootHashes: roots } });
@@ -205,13 +202,22 @@ export function Mnemos() {
     if (chat.ok) {
       pushTrace("info", "encrypting reply · uploading");
       const commitA = await commitFn({
-        data: { wallet, role: "assistant", text: replyText, sessionId: getSessionId() },
+        data: { wallet, role: "assistant", text: replyText, sessionId },
       });
       if (commitA.ok) {
-        appendRoot(commitA.rootHash);
+        appendMemoryRecord(wallet, {
+          rootHash: commitA.rootHash,
+          txHash: commitA.txHash,
+          role: "assistant",
+          sessionId,
+          ts: Date.now(),
+          sizeBytes: commitA.sizeBytes,
+          source: "mnemos",
+        });
         assistantMsg.rootHash = commitA.rootHash;
         assistantMsg.txHash = commitA.txHash;
-        pushTrace("ok", `committed · root ${short(commitA.rootHash)}`);
+        setMessages([...next]);
+        pushTrace("ok", `committed · root ${short(commitA.rootHash)} · tx ${short(commitA.txHash)}`);
       } else {
         pushTrace("warn", `reply not persisted · ${commitA.error.message}`);
       }

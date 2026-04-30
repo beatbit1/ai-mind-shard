@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useChainId } from "wagmi";
 import { useServerFn } from "@tanstack/react-start";
 import { ledgerSnapshot, listInferenceProviders, listMemories } from "@/server/zg.functions";
-
-const ROOTS_PREFIX = "tonara.mnemos.roots.";
+import { getMemoryRecordRefs, getMemoryRoots, type MemoryRecordRef } from "@/lib/memoryRecords";
+import { zeroGTestnet } from "@/lib/wallet";
 
 type SnapshotData = {
   address: string;
@@ -30,14 +30,18 @@ type RecordItem =
       sessionId: string;
       ts: number;
       sizeBytes: number;
+      txHash?: string;
+      proof?: MemoryRecordRef;
+      locations?: Array<{ url: string; shardId: number | null }>;
       latencyMs: number;
     }
-  | { ok: false; rootHash: string; error: string; latencyMs: number };
+  | { ok: false; rootHash: string; txHash?: string; error: string; latencyMs: number };
 
 export function Dashboard() {
   const { isConnected, address } = useAccount();
+  const chainId = useChainId();
   const wallet = address ?? "guest";
-  const rootsKey = useMemo(() => ROOTS_PREFIX + wallet, [wallet]);
+  const onZeroG = chainId === zeroGTestnet.id;
 
   const snapshotFn = useServerFn(ledgerSnapshot);
   const providersFn = useServerFn(listInferenceProviders);
@@ -50,14 +54,6 @@ export function Dashboard() {
   const [recordsErr, setRecordsErr] = useState<string | null>(null);
   const [lastFetched, setLastFetched] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
-
-  function getRoots(): string[] {
-    try {
-      return JSON.parse(localStorage.getItem(rootsKey) ?? "[]");
-    } catch {
-      return [];
-    }
-  }
 
   async function refreshSnapshot() {
     try {
@@ -83,7 +79,9 @@ export function Dashboard() {
   }
 
   async function refreshRecords() {
-    const roots = getRoots();
+    const roots = getMemoryRoots(wallet);
+    const refs = getMemoryRecordRefs(wallet);
+    const refByRoot = new Map(refs.map((r) => [r.rootHash, r]));
     if (roots.length === 0) {
       setRecords([]);
       return;
@@ -92,7 +90,14 @@ export function Dashboard() {
     setRecordsErr(null);
     try {
       const r: any = await listFn({ data: { rootHashes: roots } });
-      if (r.ok) setRecords(r.items as RecordItem[]);
+      if (r.ok) {
+        setRecords(
+          (r.items as RecordItem[]).map((item) => {
+            const ref = refByRoot.get(item.rootHash);
+            return item.ok ? { ...item, txHash: ref?.txHash, proof: ref } : { ...item, txHash: ref?.txHash };
+          }),
+        );
+      }
       else setRecordsErr(r.error.message);
     } catch (e) {
       setRecordsErr(e instanceof Error ? e.message : String(e));
@@ -247,6 +252,12 @@ export function Dashboard() {
               connect your wallet to scope memory records to your address
             </div>
           )}
+
+          {isConnected && !onZeroG && (
+            <div className="mt-4 rounded-xl border border-destructive/40 bg-surface px-4 py-3 text-center font-mono text-[11px] text-destructive">
+              wallet connected on chain {chainId}; switch to 0G Galileo chain {zeroGTestnet.id} for accurate network state
+            </div>
+          )}
         </div>
       </div>
 
@@ -280,26 +291,36 @@ export function Dashboard() {
               <table className="w-full text-sm">
                 <thead className="bg-surface text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
                   <tr>
-                    <th className="px-3 py-2">Root</th>
+                    <th className="px-3 py-2">Root hash</th>
+                    <th className="px-3 py-2">Tx hash</th>
+                    <th className="px-3 py-2">Proof</th>
                     <th className="px-3 py-2">Role</th>
                     <th className="px-3 py-2">Session</th>
-                    <th className="px-3 py-2">Size</th>
                     <th className="px-3 py-2">When</th>
-                    <th className="px-3 py-2">Latency</th>
                   </tr>
                 </thead>
                 <tbody>
                   {records.slice(0, 10).map((r) => (
                     <tr key={r.rootHash} className="border-t border-border">
                       <td className="px-3 py-2 font-mono text-[11px]">
-                        <a
-                          href={`https://chainscan-galileo.0g.ai/address/${r.rootHash}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="underline-offset-2 hover:underline"
-                        >
-                          {short(r.rootHash)}
-                        </a>
+                        {short(r.rootHash)}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-[11px]">
+                        {r.txHash ? (
+                          <a
+                            href={`https://chainscan-galileo.0g.ai/tx/${r.txHash}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline-offset-2 hover:underline"
+                          >
+                            {short(r.txHash)} ↗
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">indexed</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
+                        {r.ok ? `${r.locations?.length ?? 0} nodes · ${formatBytes(r.sizeBytes)}` : "—"}
                       </td>
                       <td className="px-3 py-2">
                         {r.ok ? (
@@ -313,14 +334,8 @@ export function Dashboard() {
                       <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
                         {r.ok ? short(r.sessionId) : "—"}
                       </td>
-                      <td className="px-3 py-2 font-mono text-[11px]">
-                        {r.ok ? formatBytes(r.sizeBytes) : "—"}
-                      </td>
                       <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
-                        {r.ok ? timeAgo(r.ts) : "—"}
-                      </td>
-                      <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
-                        {r.latencyMs}ms
+                        {r.ok ? `${timeAgo(r.ts)} · ${r.latencyMs}ms` : "—"}
                       </td>
                     </tr>
                   ))}
