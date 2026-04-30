@@ -47,12 +47,15 @@ export const chat0g = createServerFn({ method: "POST" })
       const lastUser = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
       const headers = await broker.inference.getRequestHeaders(chosen.provider, lastUser);
 
-      const res = await fetch(`${chosen.url}/v1/chat/completions`, {
+      // Some providers return baseURL with /v1 already appended; normalize.
+      const base = String(chosen.url).replace(/\/+$/, "").replace(/\/v1$/, "");
+      const endpoint = `${base}/v1/chat/completions`;
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ model: chosen.model, messages }),
       });
-      if (!res.ok) throw new Error(`Inference HTTP ${res.status}: ${await res.text()}`);
+      if (!res.ok) throw new Error(`Inference HTTP ${res.status} @ ${endpoint}: ${await res.text()}`);
       const json: any = await res.json();
       const reply: string = json.choices?.[0]?.message?.content ?? "";
       const chatId: string = json.id ?? "";
@@ -182,31 +185,51 @@ export const ledgerSnapshot = createServerFn({ method: "GET" }).handler(async ()
     const wallet = getWallet();
     const provider = getProvider();
     const [walletWei, blockNumber, ledgerOG] = await Promise.all([
-      provider.getBalance(wallet.address),
-      provider.getBlockNumber(),
+      provider.getBalance(wallet.address).catch(() => 0n),
+      provider.getBlockNumber().catch(() => 0),
       getLedgerBalanceOG().catch(() => 0),
     ]);
-    let services: Array<{ provider: string; model: string; url: string }> = [];
-    try {
-      const broker = await getBroker();
-      const list: any[] = await broker.inference.listService();
-      services = list.slice(0, 10).map((s) => ({
-        provider: s.provider,
-        model: s.model,
-        url: s.url,
-      }));
-    } catch {
-      /* ignore */
-    }
     return {
       ok: true as const,
       address: wallet.address,
       walletOG: Number(walletWei) / 1e18,
       ledgerOG,
       blockNumber,
-      chainId: 16601,
-      services,
+      chainId: 16602,
       ts: Date.now(),
+    };
+  } catch (e) {
+    // Always return a safe envelope — never let createServerFn surface a 500.
+    if (e instanceof ZGNotConfiguredError || e instanceof ZGUnfundedError) {
+      return { ok: false as const, error: toSafeError(e) };
+    }
+    // Even if the wallet is unfunded, expose its address so the user can fund it.
+    let address = "";
+    try {
+      address = getWallet().address;
+    } catch {
+      /* ignore */
+    }
+    return {
+      ok: false as const,
+      error: toSafeError(e),
+      address,
+    };
+  }
+});
+
+export const listInferenceProviders = createServerFn({ method: "GET" }).handler(async () => {
+  try {
+    await assertFunded();
+    const broker = await getBroker();
+    const list: any[] = await broker.inference.listService();
+    return {
+      ok: true as const,
+      services: list.slice(0, 10).map((s) => ({
+        provider: s.provider,
+        model: s.model,
+        url: s.url,
+      })),
     };
   } catch (e) {
     return { ok: false as const, error: toSafeError(e) };

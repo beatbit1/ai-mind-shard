@@ -3,7 +3,8 @@ import { ethers } from "ethers";
 
 export const ZG_RPC = "https://evmrpc-testnet.0g.ai";
 export const ZG_INDEXER_RPC = "https://indexer-storage-testnet-turbo.0g.ai";
-export const ZG_CHAIN_ID = 16601;
+// 0G Galileo testnet — chain ID is 16602 (the previous 16601 was decommissioned).
+export const ZG_CHAIN_ID = 16602;
 
 export class ZGNotConfiguredError extends Error {
   constructor(public missing: string[]) {

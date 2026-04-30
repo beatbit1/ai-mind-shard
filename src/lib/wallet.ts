@@ -9,9 +9,9 @@ import { createConfig, http } from "wagmi";
 import { mainnet, sepolia } from "wagmi/chains";
 import type { Chain } from "wagmi/chains";
 
-// 0G Galileo testnet (chain id 16601).
+// 0G Galileo testnet (chain id 16602 — current Galileo network).
 export const zeroGTestnet: Chain = {
-  id: 16601,
+  id: 16602,
   name: "0G Galileo Testnet",
   nativeCurrency: { name: "0G", symbol: "OG", decimals: 18 },
   rpcUrls: {
