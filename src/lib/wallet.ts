@@ -1,8 +1,15 @@
-import { getDefaultConfig } from "@rainbow-me/rainbowkit";
+import { connectorsForWallets } from "@rainbow-me/rainbowkit";
+import {
+  metaMaskWallet,
+  injectedWallet,
+  rainbowWallet,
+  coinbaseWallet,
+} from "@rainbow-me/rainbowkit/wallets";
+import { createConfig, http } from "wagmi";
 import { mainnet, sepolia } from "wagmi/chains";
 import type { Chain } from "wagmi/chains";
 
-// 0G Galileo testnet (chain id 16601). If a different 0G chain is needed, swap RPC + id here.
+// 0G Galileo testnet (chain id 16601).
 export const zeroGTestnet: Chain = {
   id: 16601,
   name: "0G Galileo Testnet",
@@ -17,10 +24,28 @@ export const zeroGTestnet: Chain = {
   testnet: true,
 };
 
-export const wagmiConfig = getDefaultConfig({
-  appName: "Tonara",
-  // Public demo project id — replace with your own from https://cloud.walletconnect.com
-  projectId: "3fbb6bda0fd25a8f7f7c4a6a6f6c6e9a",
+// Use injected/MetaMask connectors directly so MetaMask pops up immediately
+// (no WalletConnect dependency / no demo projectId hang).
+const connectors = connectorsForWallets(
+  [
+    {
+      groupName: "Recommended",
+      wallets: [metaMaskWallet, injectedWallet, rainbowWallet, coinbaseWallet],
+    },
+  ],
+  {
+    appName: "Tonara",
+    projectId: "tonara-injected", // not used by injected wallets, but required by the API
+  },
+);
+
+export const wagmiConfig = createConfig({
+  connectors,
   chains: [zeroGTestnet, mainnet, sepolia],
+  transports: {
+    [zeroGTestnet.id]: http("https://evmrpc-testnet.0g.ai"),
+    [mainnet.id]: http(),
+    [sepolia.id]: http(),
+  },
   ssr: true,
 });
