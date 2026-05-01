@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAccount, useChainId, useDisconnect } from "wagmi";
 import { useServerFn } from "@tanstack/react-start";
 import { ledgerSnapshot, listInferenceProviders, listMemories } from "@/server/zg.functions";
