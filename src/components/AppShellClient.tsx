@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Link } from "@tanstack/react-router";
-import { useAccount, useChainId, useSwitchChain } from "wagmi";
+import { useAccount, useChainId, useDisconnect, useSwitchChain } from "wagmi";
 import { WalletProviders } from "@/components/WalletProviders";
 import { Mnemos } from "@/components/workspaces/Mnemos";
 import { Atlas } from "@/components/workspaces/Atlas";
@@ -71,6 +71,7 @@ function WalletStatus() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
   const { switchChain, isPending } = useSwitchChain();
+  const { disconnect } = useDisconnect();
   const onZeroG = chainId === zeroGTestnet.id;
 
   return (
@@ -92,7 +93,16 @@ function WalletStatus() {
           {isPending ? "Switching…" : "Switch to 0G"}
         </button>
       )}
-      <ConnectButton showBalance={false} chainStatus="none" accountStatus="address" />
+      {isConnected ? (
+        <button
+          onClick={() => disconnect()}
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground transition-colors hover:bg-destructive hover:text-background"
+        >
+          Disconnect
+        </button>
+      ) : (
+        <ConnectButton showBalance={false} chainStatus="none" accountStatus="address" />
+      )}
     </div>
   );
 }
