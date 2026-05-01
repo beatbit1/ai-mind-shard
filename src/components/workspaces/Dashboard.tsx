@@ -79,26 +79,60 @@ export function Dashboard() {
   }
 
   async function refreshRecords() {
-    const roots = getMemoryRoots(wallet);
-    const refs = getMemoryRecordRefs(wallet);
-    const refByRoot = new Map(refs.map((r) => [r.rootHash, r]));
-    if (roots.length === 0) {
+    // Pull refs from the connected wallet AND any guest-scoped records that
+    // were created before the wallet was connected — judges should see them all.
+    const keys = wallet === "guest" ? ["guest"] : [wallet, "guest"];
+    const allRefs: MemoryRecordRef[] = [];
+    const allRoots: string[] = [];
+    for (const k of keys) {
+      for (const ref of getMemoryRecordRefs(k)) allRefs.push(ref);
+      for (const r of getMemoryRoots(k)) allRoots.push(r);
+    }
+    const refByRoot = new Map(allRefs.map((r) => [r.rootHash, r]));
+    const uniqRoots = Array.from(new Set(allRoots));
+
+    if (uniqRoots.length === 0) {
       setRecords([]);
       return;
     }
     setRecordsLoading(true);
     setRecordsErr(null);
     try {
-      const r: any = await listFn({ data: { rootHashes: roots } });
+      const r: any = await listFn({ data: { rootHashes: uniqRoots } });
       if (r.ok) {
-        setRecords(
-          (r.items as RecordItem[]).map((item) => {
-            const ref = refByRoot.get(item.rootHash);
-            return item.ok ? { ...item, txHash: ref?.txHash, proof: ref } : { ...item, txHash: ref?.txHash };
-          }),
+        // Always render every root we know about, even if download failed,
+        // so the tx hash is still surfaced for verification.
+        const byRoot = new Map<string, RecordItem>(
+          (r.items as RecordItem[]).map((it) => [it.rootHash, it]),
         );
-      }
-      else setRecordsErr(r.error.message);
+        const merged: RecordItem[] = uniqRoots.map((root) => {
+          const ref = refByRoot.get(root);
+          const item = byRoot.get(root);
+          if (item && item.ok) return { ...item, txHash: ref?.txHash, proof: ref };
+          if (item) return { ...item, txHash: ref?.txHash };
+          // Server didn't return this root — fall back to the local ref.
+          return ref
+            ? {
+                ok: true,
+                rootHash: root,
+                role: ref.role ?? "user",
+                sessionId: ref.sessionId ?? "",
+                ts: ref.ts ?? 0,
+                sizeBytes: ref.sizeBytes ?? 0,
+                txHash: ref.txHash,
+                proof: ref,
+                locations: [],
+                latencyMs: 0,
+              }
+            : { ok: false, rootHash: root, error: "missing", latencyMs: 0 };
+        });
+        merged.sort((a, b) => {
+          const ta = a.ok ? a.ts : refByRoot.get(a.rootHash)?.ts ?? 0;
+          const tb = b.ok ? b.ts : refByRoot.get(b.rootHash)?.ts ?? 0;
+          return tb - ta;
+        });
+        setRecords(merged);
+      } else setRecordsErr(r.error.message);
     } catch (e) {
       setRecordsErr(e instanceof Error ? e.message : String(e));
     }
