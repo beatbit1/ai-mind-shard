@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useAccount, useChainId } from "wagmi";
+import { useAccount, useChainId, useDisconnect } from "wagmi";
 import { useServerFn } from "@tanstack/react-start";
 import { ledgerSnapshot, listInferenceProviders, listMemories } from "@/server/zg.functions";
 import { getMemoryRecordRefs, getMemoryRoots, type MemoryRecordRef } from "@/lib/memoryRecords";
@@ -40,6 +40,7 @@ type RecordItem =
 export function Dashboard() {
   const { isConnected, address } = useAccount();
   const chainId = useChainId();
+  const { disconnect } = useDisconnect();
   const wallet = address ?? "guest";
   const onZeroG = chainId === zeroGTestnet.id;
 
