@@ -176,7 +176,14 @@ export function Dashboard() {
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Stat
-              label="Agent wallet"
+              label="Your wallet"
+              value={isConnected && address ? "connected" : "not connected"}
+              sub={isConnected && address ? short(address) : "click Connect Wallet ↗"}
+              link={isConnected && address ? `https://chainscan-galileo.0g.ai/address/${address}` : undefined}
+              tone={isConnected ? undefined : "warn"}
+            />
+            <Stat
+              label="Tonara agent wallet (server)"
               value={ok ? `${ok.walletOG.toFixed(4)} OG` : snap.status === "loading" ? "…" : "—"}
               sub={ok ? short(ok.address) : agentAddress ? short(agentAddress) : "loading"}
               link={
@@ -189,19 +196,19 @@ export function Dashboard() {
             <Stat
               label="Inference ledger"
               value={ok ? `${ok.ledgerOG.toFixed(5)} OG` : "—"}
-              sub="0G Compute"
+              sub="0G Compute · prepaid"
             />
             <Stat
               label="Memory records"
               value={recordsLoading ? "…" : String(okCount)}
               sub={`${records.length} tracked${recordsErr ? " · err" : ""}`}
             />
-            <Stat
-              label="Inference providers"
-              value={providers.length > 0 ? String(providers.length) : "…"}
-              sub={providers[0] ? providers[0].model : "discovering"}
-            />
           </div>
+          {providers.length > 0 && (
+            <div className="mt-2 font-mono text-[10.5px] text-muted-foreground">
+              {providers.length} inference providers · {providers[0].model}
+            </div>
+          )}
 
           {/* Funding CTA — the agent hot wallet is what pays for storage + inference */}
           {agentAddress && (needsFunding || snap.status === "err") && (
