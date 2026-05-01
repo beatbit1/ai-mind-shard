@@ -295,6 +295,29 @@ export function Dashboard() {
             </div>
           )}
 
+          {isConnected && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3">
+              <div className="min-w-0">
+                <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  How signing works
+                </div>
+                <p className="mt-1 max-w-2xl text-xs text-foreground">
+                  Your wallet <span className="font-mono">{short(address ?? "")}</span> is used as
+                  identity & encryption scope. The Tonara <span className="font-medium">agent
+                  wallet</span> on the server signs and pays gas for storage + inference — so
+                  MetaMask will <span className="font-medium">not</span> pop up for each request.
+                  Tx hashes appear in the records table below for verification.
+                </p>
+              </div>
+              <button
+                onClick={() => disconnect()}
+                className="shrink-0 rounded-full border border-border px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-destructive hover:text-background"
+              >
+                Disconnect wallet
+              </button>
+            </div>
+          )}
+
           {isConnected && !onZeroG && (
             <div className="mt-4 rounded-xl border border-destructive/40 bg-surface px-4 py-3 text-center font-mono text-[11px] text-destructive">
               wallet connected on chain {chainId}; switch to 0G Galileo chain {zeroGTestnet.id} for accurate network state
