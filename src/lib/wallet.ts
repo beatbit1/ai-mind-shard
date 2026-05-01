@@ -1,11 +1,11 @@
-import { connectorsForWallets } from "@rainbow-me/rainbowkit";
+import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import {
   metaMaskWallet,
   injectedWallet,
   rainbowWallet,
   coinbaseWallet,
+  walletConnectWallet,
 } from "@rainbow-me/rainbowkit/wallets";
-import { createConfig, http } from "wagmi";
 import { mainnet, sepolia } from "wagmi/chains";
 import type { Chain } from "wagmi/chains";
 
@@ -24,28 +24,21 @@ export const zeroGTestnet: Chain = {
   testnet: true,
 };
 
-// Use injected/MetaMask connectors directly so MetaMask pops up immediately
-// (no WalletConnect dependency / no demo projectId hang).
-const connectors = connectorsForWallets(
-  [
+// Use RainbowKit's getDefaultConfig — it wires up the EIP-6963 injected
+// discovery so MetaMask (and any other browser-extension wallet) is detected
+// reliably. Custom connectorsForWallets requires a valid WalletConnect
+// projectId or the connector list silently fails to initialize.
+export const wagmiConfig = getDefaultConfig({
+  appName: "Tonara",
+  // Public WalletConnect Cloud demo projectId. Required by RainbowKit but only
+  // used for the WalletConnect QR fallback, not for the injected MetaMask flow.
+  projectId: "3fbb6bba6f1de962d911bb5b5c9dba88",
+  chains: [zeroGTestnet, mainnet, sepolia],
+  wallets: [
     {
       groupName: "Recommended",
-      wallets: [metaMaskWallet, injectedWallet, rainbowWallet, coinbaseWallet],
+      wallets: [metaMaskWallet, injectedWallet, rainbowWallet, coinbaseWallet, walletConnectWallet],
     },
   ],
-  {
-    appName: "Tonara",
-    projectId: "tonara-injected", // not used by injected wallets, but required by the API
-  },
-);
-
-export const wagmiConfig = createConfig({
-  connectors,
-  chains: [zeroGTestnet, mainnet, sepolia],
-  transports: {
-    [zeroGTestnet.id]: http("https://evmrpc-testnet.0g.ai"),
-    [mainnet.id]: http(),
-    [sepolia.id]: http(),
-  },
   ssr: true,
 });
