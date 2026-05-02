@@ -68,9 +68,22 @@ export function Atlas() {
         pushTrace("info", `${chain} · shard ${i}/${total} received`);
       }
       setEdge(chain, { status: "done" });
+      if (address) {
+        appendAgentAction(address, {
+          kind: "cross-chain", source: "atlas",
+          label: `${chain} · ${total} shards fetched`,
+          ok: true,
+        });
+      }
     });
     await Promise.all(tasks);
     pushTrace("ok", `8 shards reassembled · dispatching to 0G inference`);
+    if (address) {
+      appendAgentAction(address, {
+        kind: "reassembly", source: "atlas",
+        label: `8 cross-chain shards reassembled (0G/ETH/SOL)`, ok: true,
+      });
+    }
 
     const chat = await chatFn({
       data: {
@@ -89,6 +102,13 @@ export function Atlas() {
     if (chat.ok) {
       replyText = chat.reply;
       pushTrace("ok", `inference · ${chat.model} · ${chat.latencyMs}ms${chat.verified ? " · ✓verified" : ""}`);
+      if (address) {
+        appendAgentAction(address, {
+          kind: "inference", source: "atlas",
+          label: `${chat.model}${chat.verified ? " · ✓verified" : ""}`,
+          latencyMs: chat.latencyMs, provider: chat.provider, model: chat.model, ok: true,
+        });
+      }
     } else {
       replyText =
         chat.error.kind === "not_configured"
@@ -97,6 +117,12 @@ export function Atlas() {
             ? `Wallet unfunded. Fund ${chat.error.address ?? "the agent wallet"} at https://faucet.0g.ai`
             : `Inference failed: ${chat.error.message}`;
       pushTrace("err", `inference failed`);
+      if (address) {
+        appendAgentAction(address, {
+          kind: "inference", source: "atlas", label: "inference failed",
+          ok: false, error: chat.error.message,
+        });
+      }
     }
 
     // Stream output line-by-line
@@ -124,7 +150,23 @@ export function Atlas() {
           sessionId: "atlas",
         },
       });
-      if (c.ok) pushTrace("ok", `manifest anchored · root ${c.rootHash.slice(0, 10)}…`);
+      if (c.ok) {
+        pushTrace("ok", `manifest anchored · root ${c.rootHash.slice(0, 10)}…`);
+        appendMemoryRecord(address, {
+          rootHash: c.rootHash, txHash: c.txHash, role: "assistant",
+          sessionId: "atlas", ts: Date.now(), sizeBytes: c.sizeBytes, source: "atlas",
+        });
+        appendAgentAction(address, {
+          kind: "commit", source: "atlas",
+          label: `research brief anchored on 0G Storage`,
+          latencyMs: c.latencyMs, txHash: c.txHash, rootHash: c.rootHash, ok: true,
+        });
+      } else {
+        appendAgentAction(address, {
+          kind: "commit", source: "atlas", label: "brief persist failed",
+          ok: false, error: c.error.message,
+        });
+      }
     }
 
     setWorking(false);
