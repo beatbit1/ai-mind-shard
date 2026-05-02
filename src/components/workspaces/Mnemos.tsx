@@ -9,6 +9,7 @@ import {
 } from "./RecallTrace";
 import { chat0g, commitMemory, recallMemories, zgStatus } from "@/server/zg.functions";
 import { appendMemoryRecord, getMemoryRoots } from "@/lib/memoryRecords";
+import { appendAgentAction } from "@/lib/agentActions";
 
 type Msg = {
   id: string;
@@ -134,6 +135,15 @@ export function Mnemos() {
         sizeBytes: commitUser.sizeBytes,
         source: "mnemos",
       });
+      appendAgentAction(wallet, {
+        kind: "commit",
+        source: "mnemos",
+        label: `encrypted user message → 0G Storage (${commitUser.sizeBytes}B)`,
+        latencyMs: commitUser.latencyMs,
+        txHash: commitUser.txHash,
+        rootHash: commitUser.rootHash,
+        ok: true,
+      });
       userMsg.rootHash = commitUser.rootHash;
       userMsg.txHash = commitUser.txHash;
       setMessages([...next]);
@@ -147,6 +157,14 @@ export function Mnemos() {
     } else {
       pushTrace("err", `storage · ${commitUser.error.message}`);
       setZgError(commitUser.error.message);
+      appendAgentAction(wallet, {
+        kind: "commit",
+        source: "mnemos",
+        label: `storage upload failed`,
+        latencyMs: commitUser.latencyMs,
+        ok: false,
+        error: commitUser.error.message,
+      });
     }
 
     // 2) If returning session and vague, recall first
@@ -161,8 +179,19 @@ export function Mnemos() {
         if (r.ok) {
           recalled = r.memories.map((m) => ({ role: m.role, text: m.text }));
           pushTrace("ok", `reassembled ${r.memories.length} shards · ${r.latencyMs}ms`);
+          appendAgentAction(wallet, {
+            kind: "reassembly",
+            source: "mnemos",
+            label: `reassembled ${r.memories.length} shards from 0G Storage`,
+            latencyMs: r.latencyMs,
+            ok: true,
+          });
         } else {
           pushTrace("err", `recall · ${r.error.message}`);
+          appendAgentAction(wallet, {
+            kind: "reassembly", source: "mnemos",
+            label: "shard reassembly failed", ok: false, error: r.error.message,
+          });
         }
       }
     }
@@ -183,6 +212,15 @@ export function Mnemos() {
         `inference · ${chat.model} · ${chat.latencyMs}ms · provider ${short(chat.provider)}${chat.verified ? " · ✓verified" : ""}`,
       );
       setStats((s) => ({ ...s, cost: `${chat.ledgerOG.toFixed(5)} OG ledger` }));
+      appendAgentAction(wallet, {
+        kind: "inference",
+        source: "mnemos",
+        label: `${chat.model}${chat.verified ? " · ✓verified" : ""}`,
+        latencyMs: chat.latencyMs,
+        provider: chat.provider,
+        model: chat.model,
+        ok: true,
+      });
     } else {
       replyText =
         chat.error.kind === "not_configured"
@@ -192,6 +230,10 @@ export function Mnemos() {
             : `⚠️ Inference failed: ${chat.error.message}`;
       pushTrace("err", `inference · ${chat.error.message}`);
       setZgError(chat.error.message);
+      appendAgentAction(wallet, {
+        kind: "inference", source: "mnemos",
+        label: "inference failed", ok: false, error: chat.error.message,
+      });
     }
 
     const assistantMsg: Msg = { id: crypto.randomUUID(), role: "assistant", text: replyText };
@@ -214,12 +256,22 @@ export function Mnemos() {
           sizeBytes: commitA.sizeBytes,
           source: "mnemos",
         });
+        appendAgentAction(wallet, {
+          kind: "commit", source: "mnemos",
+          label: `encrypted assistant reply → 0G Storage (${commitA.sizeBytes}B)`,
+          latencyMs: commitA.latencyMs, txHash: commitA.txHash, rootHash: commitA.rootHash,
+          ok: true,
+        });
         assistantMsg.rootHash = commitA.rootHash;
         assistantMsg.txHash = commitA.txHash;
         setMessages([...next]);
         pushTrace("ok", `committed · root ${short(commitA.rootHash)} · tx ${short(commitA.txHash)}`);
       } else {
         pushTrace("warn", `reply not persisted · ${commitA.error.message}`);
+        appendAgentAction(wallet, {
+          kind: "commit", source: "mnemos", label: "reply persist failed",
+          ok: false, error: commitA.error.message,
+        });
       }
     }
 

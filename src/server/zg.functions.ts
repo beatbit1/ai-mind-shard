@@ -232,6 +232,46 @@ export const ledgerSnapshot = createServerFn({ method: "GET" }).handler(async ()
   }
 });
 
+export const verifyTxs = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => d as { txHashes: string[] })
+  .handler(async ({ data }) => {
+    try {
+      const provider = getProvider();
+      const blockNumber = await provider.getBlockNumber().catch(() => 0);
+      const items = await Promise.all(
+        (data.txHashes ?? []).slice(-50).map(async (txHash) => {
+          if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+            return { txHash, status: "unknown" as const };
+          }
+          try {
+            const receipt = await provider.getTransactionReceipt(txHash);
+            if (!receipt) {
+              // No receipt yet — either pending in mempool or not propagated
+              const tx = await provider.getTransaction(txHash).catch(() => null);
+              return {
+                txHash,
+                status: tx ? ("pending" as const) : ("unknown" as const),
+              };
+            }
+            const confirmations = blockNumber > 0 ? Math.max(0, blockNumber - receipt.blockNumber + 1) : 0;
+            return {
+              txHash,
+              status: receipt.status === 1 ? ("confirmed" as const) : ("failed" as const),
+              blockNumber: receipt.blockNumber,
+              confirmations,
+              gasUsed: receipt.gasUsed?.toString(),
+            };
+          } catch (e) {
+            return { txHash, status: "unknown" as const, error: e instanceof Error ? e.message : String(e) };
+          }
+        }),
+      );
+      return { ok: true as const, blockNumber, items };
+    } catch (e) {
+      return { ok: false as const, error: toSafeError(e) };
+    }
+  });
+
 export const listInferenceProviders = createServerFn({ method: "GET" }).handler(async () => {
   try {
     await assertFunded();
