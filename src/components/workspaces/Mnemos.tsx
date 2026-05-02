@@ -135,6 +135,15 @@ export function Mnemos() {
         sizeBytes: commitUser.sizeBytes,
         source: "mnemos",
       });
+      appendAgentAction(wallet, {
+        kind: "commit",
+        source: "mnemos",
+        label: `encrypted user message → 0G Storage (${commitUser.sizeBytes}B)`,
+        latencyMs: commitUser.latencyMs,
+        txHash: commitUser.txHash,
+        rootHash: commitUser.rootHash,
+        ok: true,
+      });
       userMsg.rootHash = commitUser.rootHash;
       userMsg.txHash = commitUser.txHash;
       setMessages([...next]);
@@ -148,6 +157,14 @@ export function Mnemos() {
     } else {
       pushTrace("err", `storage · ${commitUser.error.message}`);
       setZgError(commitUser.error.message);
+      appendAgentAction(wallet, {
+        kind: "commit",
+        source: "mnemos",
+        label: `storage upload failed`,
+        latencyMs: commitUser.latencyMs,
+        ok: false,
+        error: commitUser.error.message,
+      });
     }
 
     // 2) If returning session and vague, recall first
