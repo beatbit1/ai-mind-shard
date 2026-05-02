@@ -256,12 +256,22 @@ export function Mnemos() {
           sizeBytes: commitA.sizeBytes,
           source: "mnemos",
         });
+        appendAgentAction(wallet, {
+          kind: "commit", source: "mnemos",
+          label: `encrypted assistant reply → 0G Storage (${commitA.sizeBytes}B)`,
+          latencyMs: commitA.latencyMs, txHash: commitA.txHash, rootHash: commitA.rootHash,
+          ok: true,
+        });
         assistantMsg.rootHash = commitA.rootHash;
         assistantMsg.txHash = commitA.txHash;
         setMessages([...next]);
         pushTrace("ok", `committed · root ${short(commitA.rootHash)} · tx ${short(commitA.txHash)}`);
       } else {
         pushTrace("warn", `reply not persisted · ${commitA.error.message}`);
+        appendAgentAction(wallet, {
+          kind: "commit", source: "mnemos", label: "reply persist failed",
+          ok: false, error: commitA.error.message,
+        });
       }
     }
 
