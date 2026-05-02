@@ -1,9 +1,18 @@
 import { useEffect, useState } from "react";
 import { useAccount, useChainId, useDisconnect } from "wagmi";
 import { useServerFn } from "@tanstack/react-start";
-import { ledgerSnapshot, listInferenceProviders, listMemories } from "@/server/zg.functions";
+import {
+  ledgerSnapshot,
+  listInferenceProviders,
+  listMemories,
+  verifyTxs,
+} from "@/server/zg.functions";
 import { getMemoryRecordRefs, getMemoryRoots, type MemoryRecordRef } from "@/lib/memoryRecords";
+import { getAgentActions, type AgentAction } from "@/lib/agentActions";
 import { zeroGTestnet } from "@/lib/wallet";
+
+const EXPLORER = "https://chainscan-galileo.0g.ai";
+const STORAGE_EXPLORER = "https://storagescan-galileo.0g.ai";
 
 type SnapshotData = {
   address: string;
@@ -37,6 +46,14 @@ type RecordItem =
     }
   | { ok: false; rootHash: string; txHash?: string; error: string; latencyMs: number };
 
+type TxStatus = "confirmed" | "pending" | "failed" | "unknown";
+type TxStatusItem = {
+  txHash: string;
+  status: TxStatus;
+  blockNumber?: number;
+  confirmations?: number;
+};
+
 export function Dashboard() {
   const { isConnected, address } = useAccount();
   const chainId = useChainId();
@@ -47,6 +64,7 @@ export function Dashboard() {
   const snapshotFn = useServerFn(ledgerSnapshot);
   const providersFn = useServerFn(listInferenceProviders);
   const listFn = useServerFn(listMemories);
+  const verifyFn = useServerFn(verifyTxs);
 
   const [snap, setSnap] = useState<SnapshotState>({ status: "loading" });
   const [providers, setProviders] = useState<ProviderItem[]>([]);
@@ -55,6 +73,8 @@ export function Dashboard() {
   const [recordsErr, setRecordsErr] = useState<string | null>(null);
   const [lastFetched, setLastFetched] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  const [txStatus, setTxStatus] = useState<Record<string, TxStatusItem>>({});
+  const [actions, setActions] = useState<AgentAction[]>([]);
 
   async function refreshSnapshot() {
     try {
@@ -79,9 +99,32 @@ export function Dashboard() {
     }
   }
 
+  function refreshActions() {
+    const keys = wallet === "guest" ? ["guest"] : [wallet, "guest"];
+    const all: AgentAction[] = [];
+    for (const k of keys) for (const a of getAgentActions(k)) all.push(a);
+    all.sort((a, b) => b.ts - a.ts);
+    setActions(all.slice(0, 25));
+  }
+
+  async function refreshTxStatus(hashes: string[]) {
+    const uniq = Array.from(new Set(hashes.filter(Boolean)));
+    if (uniq.length === 0) return;
+    try {
+      const r: any = await verifyFn({ data: { txHashes: uniq } });
+      if (r.ok) {
+        setTxStatus((prev) => {
+          const next = { ...prev };
+          for (const it of r.items as TxStatusItem[]) next[it.txHash] = it;
+          return next;
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   async function refreshRecords() {
-    // Pull refs from the connected wallet AND any guest-scoped records that
-    // were created before the wallet was connected — judges should see them all.
     const keys = wallet === "guest" ? ["guest"] : [wallet, "guest"];
     const allRefs: MemoryRecordRef[] = [];
     const allRoots: string[] = [];
@@ -101,8 +144,6 @@ export function Dashboard() {
     try {
       const r: any = await listFn({ data: { rootHashes: uniqRoots } });
       if (r.ok) {
-        // Always render every root we know about, even if download failed,
-        // so the tx hash is still surfaced for verification.
         const byRoot = new Map<string, RecordItem>(
           (r.items as RecordItem[]).map((it) => [it.rootHash, it]),
         );
@@ -111,7 +152,6 @@ export function Dashboard() {
           const item = byRoot.get(root);
           if (item && item.ok) return { ...item, txHash: ref?.txHash, proof: ref };
           if (item) return { ...item, txHash: ref?.txHash };
-          // Server didn't return this root — fall back to the local ref.
           return ref
             ? {
                 ok: true,
@@ -133,6 +173,8 @@ export function Dashboard() {
           return tb - ta;
         });
         setRecords(merged);
+        // Verify tx confirmation status on-chain
+        refreshTxStatus(merged.map((m) => m.txHash || "").filter(Boolean));
       } else setRecordsErr(r.error.message);
     } catch (e) {
       setRecordsErr(e instanceof Error ? e.message : String(e));
@@ -141,15 +183,21 @@ export function Dashboard() {
   }
 
   useEffect(() => {
-    // Snapshot is fast — do it first. Providers + records run in background.
     refreshSnapshot();
     refreshProviders();
     refreshRecords();
+    refreshActions();
     const a = setInterval(refreshSnapshot, 15_000);
     const b = setInterval(refreshRecords, 30_000);
+    const c = setInterval(refreshActions, 5_000);
+    // Listen to localStorage changes from Mnemos/Atlas in same tab
+    const onStorage = () => refreshActions();
+    window.addEventListener("storage", onStorage);
     return () => {
       clearInterval(a);
       clearInterval(b);
+      clearInterval(c);
+      window.removeEventListener("storage", onStorage);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wallet]);
@@ -196,11 +244,20 @@ export function Dashboard() {
                   block #{ok.blockNumber.toLocaleString()} · chain {ok.chainId}
                 </span>
               )}
+              {isConnected && (
+                <button
+                  onClick={() => disconnect()}
+                  className="rounded-full border border-border px-3 py-1 text-xs text-foreground transition-colors hover:bg-destructive hover:text-background"
+                >
+                  Disconnect
+                </button>
+              )}
               <button
                 onClick={() => {
                   refreshSnapshot();
                   refreshProviders();
                   refreshRecords();
+                  refreshActions();
                 }}
                 className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
               >
@@ -214,18 +271,14 @@ export function Dashboard() {
               label="Your wallet"
               value={isConnected && address ? "connected" : "not connected"}
               sub={isConnected && address ? short(address) : "click Connect Wallet ↗"}
-              link={isConnected && address ? `https://chainscan-galileo.0g.ai/address/${address}` : undefined}
+              link={isConnected && address ? `${EXPLORER}/address/${address}` : undefined}
               tone={isConnected ? undefined : "warn"}
             />
             <Stat
               label="Tonara agent wallet (server)"
               value={ok ? `${ok.walletOG.toFixed(4)} OG` : snap.status === "loading" ? "…" : "—"}
               sub={ok ? short(ok.address) : agentAddress ? short(agentAddress) : "loading"}
-              link={
-                ok || agentAddress
-                  ? `https://chainscan-galileo.0g.ai/address/${ok?.address ?? agentAddress}`
-                  : undefined
-              }
+              link={ok || agentAddress ? `${EXPLORER}/address/${ok?.address ?? agentAddress}` : undefined}
               tone={needsFunding ? "warn" : undefined}
             />
             <Stat
@@ -245,7 +298,7 @@ export function Dashboard() {
             </div>
           )}
 
-          {/* Funding CTA — the agent hot wallet is what pays for storage + inference */}
+          {/* Funding CTA */}
           {agentAddress && (needsFunding || snap.status === "err") && (
             <div className="mt-4 rounded-xl border border-yellow-500/40 bg-yellow-500/5 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -257,7 +310,7 @@ export function Dashboard() {
                     Tonara's agent wallet pays for every 0G Storage upload and inference call.
                     It needs at least <span className="font-medium">3 OG</span> to open the
                     inference ledger and a topup of <span className="font-medium">~1 OG</span>{" "}
-                    for ongoing calls. Your personal wallet's balance does not count.
+                    for ongoing calls.
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-2 font-mono text-[11px]">
                     <span className="rounded-md border border-border bg-surface px-2 py-1">
@@ -295,29 +348,6 @@ export function Dashboard() {
             </div>
           )}
 
-          {isConnected && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3">
-              <div className="min-w-0">
-                <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                  How signing works
-                </div>
-                <p className="mt-1 max-w-2xl text-xs text-foreground">
-                  Your wallet <span className="font-mono">{short(address ?? "")}</span> is used as
-                  identity & encryption scope. The Tonara <span className="font-medium">agent
-                  wallet</span> on the server signs and pays gas for storage + inference — so
-                  MetaMask will <span className="font-medium">not</span> pop up for each request.
-                  Tx hashes appear in the records table below for verification.
-                </p>
-              </div>
-              <button
-                onClick={() => disconnect()}
-                className="shrink-0 rounded-full border border-border px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-destructive hover:text-background"
-              >
-                Disconnect wallet
-              </button>
-            </div>
-          )}
-
           {isConnected && !onZeroG && (
             <div className="mt-4 rounded-xl border border-destructive/40 bg-surface px-4 py-3 text-center font-mono text-[11px] text-destructive">
               wallet connected on chain {chainId}; switch to 0G Galileo chain {zeroGTestnet.id} for accurate network state
@@ -350,12 +380,13 @@ export function Dashboard() {
               <div className="px-4 py-8 text-center text-sm text-muted-foreground">
                 {recordsLoading
                   ? "fetching from 0G Storage…"
-                  : "No records yet. Fund the agent wallet, then send a message in Mnemos or run a query in Atlas."}
+                  : "No records yet. Send a message in Mnemos or run a query in Atlas."}
               </div>
             ) : (
               <table className="w-full text-sm">
                 <thead className="bg-surface text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
                   <tr>
+                    <th className="px-3 py-2">Status</th>
                     <th className="px-3 py-2">Root hash</th>
                     <th className="px-3 py-2">Tx hash</th>
                     <th className="px-3 py-2">Proof</th>
@@ -365,42 +396,138 @@ export function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {records.slice(0, 10).map((r) => (
-                    <tr key={r.rootHash} className="border-t border-border">
-                      <td className="px-3 py-2 font-mono text-[11px]">
-                        {short(r.rootHash)}
+                  {records.slice(0, 10).map((r) => {
+                    const tx = r.txHash ? txStatus[r.txHash] : undefined;
+                    const status: TxStatus = tx?.status ?? (r.txHash ? "pending" : "unknown");
+                    return (
+                      <tr key={r.rootHash} className="border-t border-border hover:bg-surface/50">
+                        <td className="px-3 py-2">
+                          <StatusBadge
+                            status={status}
+                            confirmations={tx?.confirmations}
+                          />
+                        </td>
+                        <td className="px-3 py-2 font-mono text-[11px]">
+                          <a
+                            href={`${STORAGE_EXPLORER}/file/${r.rootHash}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline-offset-2 hover:underline"
+                            title={r.rootHash}
+                          >
+                            {short(r.rootHash)} ↗
+                          </a>
+                        </td>
+                        <td className="px-3 py-2 font-mono text-[11px]">
+                          {r.txHash ? (
+                            <a
+                              href={`${EXPLORER}/tx/${r.txHash}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="underline-offset-2 hover:underline"
+                              title={r.txHash}
+                            >
+                              {short(r.txHash)} ↗
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">indexed</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
+                          {r.ok ? `${r.locations?.length ?? 0} nodes · ${formatBytes(r.sizeBytes)}` : "—"}
+                        </td>
+                        <td className="px-3 py-2">
+                          {r.ok ? (
+                            <span className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-widest">
+                              {r.role}
+                            </span>
+                          ) : (
+                            <span className="text-destructive">decrypt err</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
+                          {r.ok ? short(r.sessionId) : "—"}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
+                          {r.ok ? `${timeAgo(r.ts)} · ${r.latencyMs}ms` : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <div className="mt-2 font-mono text-[10px] text-muted-foreground">
+            click any hash → opens on the 0G Galileo explorer (storagescan / chainscan)
+          </div>
+        </div>
+      </div>
+
+      {/* AGENT ACTIONS */}
+      <div className="rounded-2xl border border-border bg-surface p-1">
+        <div className="rounded-xl bg-background p-5 lg:p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                Latest agent actions
+              </div>
+              <h3 className="mt-0.5 font-display text-base font-semibold lg:text-lg">
+                Inference · shard reassembly · cross-chain
+              </h3>
+            </div>
+            <span className="font-mono text-[10.5px] text-muted-foreground">
+              {actions.length} entries
+            </span>
+          </div>
+          <div className="mt-3 overflow-x-auto rounded-xl border border-border">
+            {actions.length === 0 ? (
+              <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                No agent activity yet — actions will appear here as soon as Mnemos or Atlas runs.
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-surface text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2">Kind</th>
+                    <th className="px-3 py-2">Source</th>
+                    <th className="px-3 py-2">Action</th>
+                    <th className="px-3 py-2">Tx</th>
+                    <th className="px-3 py-2">When</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {actions.map((a) => (
+                    <tr key={a.id} className="border-t border-border">
+                      <td className="px-3 py-2">
+                        <KindBadge kind={a.kind} ok={a.ok} />
+                      </td>
+                      <td className="px-3 py-2 font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground">
+                        {a.source}
+                      </td>
+                      <td className="px-3 py-2 text-[12.5px]">
+                        <div className={a.ok ? "" : "text-destructive"}>{a.label}</div>
+                        {a.error && (
+                          <div className="font-mono text-[10px] text-destructive/80">{a.error}</div>
+                        )}
                       </td>
                       <td className="px-3 py-2 font-mono text-[11px]">
-                        {r.txHash ? (
+                        {a.txHash ? (
                           <a
-                            href={`https://chainscan-galileo.0g.ai/tx/${r.txHash}`}
+                            href={`${EXPLORER}/tx/${a.txHash}`}
                             target="_blank"
                             rel="noreferrer"
                             className="underline-offset-2 hover:underline"
                           >
-                            {short(r.txHash)} ↗
+                            {short(a.txHash)} ↗
                           </a>
                         ) : (
-                          <span className="text-muted-foreground">indexed</span>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </td>
                       <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
-                        {r.ok ? `${r.locations?.length ?? 0} nodes · ${formatBytes(r.sizeBytes)}` : "—"}
-                      </td>
-                      <td className="px-3 py-2">
-                        {r.ok ? (
-                          <span className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-widest">
-                            {r.role}
-                          </span>
-                        ) : (
-                          <span className="text-destructive">decrypt err</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
-                        {r.ok ? short(r.sessionId) : "—"}
-                      </td>
-                      <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
-                        {r.ok ? `${timeAgo(r.ts)} · ${r.latencyMs}ms` : "—"}
+                        {timeAgo(a.ts)}
+                        {a.latencyMs ? ` · ${a.latencyMs}ms` : ""}
                       </td>
                     </tr>
                   ))}
@@ -432,6 +559,47 @@ export function Dashboard() {
         </div>
       )}
     </div>
+  );
+}
+
+function StatusBadge({ status, confirmations }: { status: TxStatus; confirmations?: number }) {
+  const map: Record<TxStatus, { label: string; cls: string; dot: string }> = {
+    confirmed: {
+      label: confirmations ? `confirmed · ${confirmations}` : "confirmed",
+      cls: "border-green-500/40 text-green-500",
+      dot: "bg-green-500",
+    },
+    pending: {
+      label: "pending",
+      cls: "border-yellow-500/40 text-yellow-500",
+      dot: "bg-yellow-500 animate-pulse",
+    },
+    failed: {
+      label: "failed",
+      cls: "border-destructive/50 text-destructive",
+      dot: "bg-destructive",
+    },
+    unknown: {
+      label: "indexing",
+      cls: "border-border text-muted-foreground",
+      dot: "bg-muted-foreground",
+    },
+  };
+  const m = map[status];
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest ${m.cls}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${m.dot}`} />
+      {m.label}
+    </span>
+  );
+}
+
+function KindBadge({ kind, ok }: { kind: AgentAction["kind"]; ok: boolean }) {
+  const cls = ok ? "border-border text-foreground" : "border-destructive/50 text-destructive";
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest ${cls}`}>
+      {kind}
+    </span>
   );
 }
 
