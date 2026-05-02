@@ -9,6 +9,7 @@ import {
 } from "./RecallTrace";
 import { chat0g, commitMemory, recallMemories, zgStatus } from "@/server/zg.functions";
 import { appendMemoryRecord, getMemoryRoots } from "@/lib/memoryRecords";
+import { appendAgentAction } from "@/lib/agentActions";
 
 type Msg = {
   id: string;
