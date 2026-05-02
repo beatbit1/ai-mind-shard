@@ -179,8 +179,19 @@ export function Mnemos() {
         if (r.ok) {
           recalled = r.memories.map((m) => ({ role: m.role, text: m.text }));
           pushTrace("ok", `reassembled ${r.memories.length} shards · ${r.latencyMs}ms`);
+          appendAgentAction(wallet, {
+            kind: "reassembly",
+            source: "mnemos",
+            label: `reassembled ${r.memories.length} shards from 0G Storage`,
+            latencyMs: r.latencyMs,
+            ok: true,
+          });
         } else {
           pushTrace("err", `recall · ${r.error.message}`);
+          appendAgentAction(wallet, {
+            kind: "reassembly", source: "mnemos",
+            label: "shard reassembly failed", ok: false, error: r.error.message,
+          });
         }
       }
     }
@@ -201,6 +212,15 @@ export function Mnemos() {
         `inference · ${chat.model} · ${chat.latencyMs}ms · provider ${short(chat.provider)}${chat.verified ? " · ✓verified" : ""}`,
       );
       setStats((s) => ({ ...s, cost: `${chat.ledgerOG.toFixed(5)} OG ledger` }));
+      appendAgentAction(wallet, {
+        kind: "inference",
+        source: "mnemos",
+        label: `${chat.model}${chat.verified ? " · ✓verified" : ""}`,
+        latencyMs: chat.latencyMs,
+        provider: chat.provider,
+        model: chat.model,
+        ok: true,
+      });
     } else {
       replyText =
         chat.error.kind === "not_configured"
@@ -210,6 +230,10 @@ export function Mnemos() {
             : `⚠️ Inference failed: ${chat.error.message}`;
       pushTrace("err", `inference · ${chat.error.message}`);
       setZgError(chat.error.message);
+      appendAgentAction(wallet, {
+        kind: "inference", source: "mnemos",
+        label: "inference failed", ok: false, error: chat.error.message,
+      });
     }
 
     const assistantMsg: Msg = { id: crypto.randomUUID(), role: "assistant", text: replyText };
