@@ -74,6 +74,8 @@ export function Dashboard() {
   const providersFn = useServerFn(listInferenceProviders);
   const listFn = useServerFn(listMemories);
   const verifyFn = useServerFn(verifyTxs);
+  const inspectFn = useServerFn(inspectRecord);
+  const verifyInferenceFn = useServerFn(verifyInference);
 
   const [snap, setSnap] = useState<SnapshotState>({ status: "loading" });
   const [providers, setProviders] = useState<ProviderItem[]>([]);
@@ -84,6 +86,55 @@ export function Dashboard() {
   const [copied, setCopied] = useState(false);
   const [txStatus, setTxStatus] = useState<Record<string, TxStatusItem>>({});
   const [actions, setActions] = useState<AgentAction[]>([]);
+  const [inspect, setInspect] = useState<{
+    open: boolean;
+    rootHash: string;
+    loading: boolean;
+    data: any | null;
+    error: string | null;
+  }>({ open: false, rootHash: "", loading: false, data: null, error: null });
+  const [vi, setVi] = useState<{
+    open: boolean;
+    loading: boolean;
+    data: any | null;
+    error: string | null;
+  }>({ open: false, loading: false, data: null, error: null });
+
+  async function openInspect(rootHash: string) {
+    const ref = records.find((r) => r.rootHash === rootHash);
+    setInspect({ open: true, rootHash, loading: true, data: { ref }, error: null });
+    try {
+      const r: any = await inspectFn({ data: { rootHash } });
+      if (r.ok) setInspect({ open: true, rootHash, loading: false, data: { ...r, ref }, error: null });
+      else setInspect({ open: true, rootHash, loading: false, data: { ref, steps: r.steps }, error: r.error?.message ?? "failed" });
+    } catch (e) {
+      setInspect({ open: true, rootHash, loading: false, data: { ref }, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  async function runVerifyInference() {
+    setVi({ open: true, loading: true, data: null, error: null });
+    try {
+      const r: any = await verifyInferenceFn({});
+      if (r.ok) {
+        setVi({ open: true, loading: false, data: r, error: null });
+        appendAgentAction(wallet, {
+          kind: "inference",
+          source: "dashboard",
+          label: `verify-inference smoke test → ${r.verified ? "signature valid" : "no signature"} (${r.model})`,
+          ok: true,
+          provider: r.provider,
+          model: r.model,
+          latencyMs: r.latencyMs,
+          txHash: r.chatId,
+        });
+      } else {
+        setVi({ open: true, loading: false, data: { steps: r.steps }, error: r.error?.message ?? "failed" });
+      }
+    } catch (e) {
+      setVi({ open: true, loading: false, data: null, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
 
   async function refreshSnapshot() {
     try {
