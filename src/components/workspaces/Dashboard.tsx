@@ -2,14 +2,23 @@ import { useEffect, useState } from "react";
 import { useAccount, useChainId, useDisconnect } from "wagmi";
 import { useServerFn } from "@tanstack/react-start";
 import {
+  inspectRecord,
   ledgerSnapshot,
   listInferenceProviders,
   listMemories,
+  verifyInference,
   verifyTxs,
 } from "@/server/zg.functions";
 import { getMemoryRecordRefs, getMemoryRoots, type MemoryRecordRef } from "@/lib/memoryRecords";
-import { getAgentActions, type AgentAction } from "@/lib/agentActions";
+import { getAgentActions, appendAgentAction, type AgentAction } from "@/lib/agentActions";
 import { zeroGTestnet } from "@/lib/wallet";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 const EXPLORER = "https://chainscan-galileo.0g.ai";
 const STORAGE_EXPLORER = "https://storagescan-galileo.0g.ai";
