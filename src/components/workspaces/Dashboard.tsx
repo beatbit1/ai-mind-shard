@@ -468,14 +468,21 @@ export function Dashboard() {
                           />
                         </td>
                         <td className="px-3 py-2 font-mono text-[11px]">
+                          <button
+                            onClick={() => openInspect(r.rootHash)}
+                            className="underline-offset-2 hover:underline"
+                            title={`Inspect ${r.rootHash}`}
+                          >
+                            {short(r.rootHash)}
+                          </button>
                           <a
                             href={`${STORAGE_EXPLORER}/file/${r.rootHash}`}
                             target="_blank"
                             rel="noreferrer"
-                            className="underline-offset-2 hover:underline"
-                            title={r.rootHash}
+                            className="ml-1 text-muted-foreground hover:text-foreground"
+                            title="Open on StorageScan"
                           >
-                            {short(r.rootHash)} ↗
+                            ↗
                           </a>
                         </td>
                         <td className="px-3 py-2 font-mono text-[11px]">
