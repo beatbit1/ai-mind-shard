@@ -631,6 +631,214 @@ export function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* INSPECT ROOT MODAL */}
+      <Dialog open={inspect.open} onOpenChange={(o) => setInspect((s) => ({ ...s, open: o }))}>
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-display text-base">Memory record · reassembly trace</DialogTitle>
+            <DialogDescription className="font-mono text-[11px] break-all">
+              root {inspect.rootHash}
+            </DialogDescription>
+          </DialogHeader>
+          {inspect.loading && (
+            <div className="py-6 text-center text-sm text-muted-foreground">
+              fetching shards from 0G Storage…
+            </div>
+          )}
+          {inspect.error && (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+              {inspect.error}
+            </div>
+          )}
+          {inspect.data && (
+            <div className="space-y-4 text-sm">
+              {inspect.data.ref?.txHash && (
+                <div className="rounded-lg border border-border bg-surface p-3">
+                  <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                    Storage commit transaction
+                  </div>
+                  <a
+                    href={`${EXPLORER}/tx/${inspect.data.ref.txHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 block break-all font-mono text-[11px] text-primary hover:underline"
+                  >
+                    {inspect.data.ref.txHash} ↗
+                  </a>
+                  {inspect.data.ref.ts && (
+                    <div className="mt-1 font-mono text-[10px] text-muted-foreground">
+                      committed {new Date(inspect.data.ref.ts).toLocaleString()}
+                    </div>
+                  )}
+                </div>
+              )}
+              {inspect.data.steps && (
+                <div>
+                  <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                    Reassembly steps
+                  </div>
+                  <ol className="mt-2 space-y-1.5">
+                    {inspect.data.steps.map((s: any, i: number) => (
+                      <li
+                        key={i}
+                        className={`rounded-md border px-3 py-2 font-mono text-[11px] ${
+                          s.ok ? "border-border bg-surface" : "border-destructive/40 bg-destructive/5"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={s.ok ? "text-foreground" : "text-destructive"}>
+                            {s.ok ? "✓" : "✗"} {s.step}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {new Date(s.ts).toLocaleTimeString()} · {s.latencyMs}ms
+                          </span>
+                        </div>
+                        {s.detail && (
+                          <div className="mt-1 break-all text-muted-foreground">{s.detail}</div>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+              {inspect.data.locations && inspect.data.locations.length > 0 && (
+                <div>
+                  <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                    Off-chain shard sources ({inspect.data.locations.length})
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {inspect.data.locations.map((l: any, i: number) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between rounded-md border border-border bg-surface px-3 py-1.5 font-mono text-[10.5px]"
+                      >
+                        <span className="break-all">{l.url}</span>
+                        <span className="text-muted-foreground">shard {l.shardId ?? "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {inspect.data.payload && (
+                <div>
+                  <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                    Reassembled payload ({inspect.data.payload.role})
+                  </div>
+                  <pre className="mt-2 max-h-64 overflow-auto rounded-md border border-border bg-surface p-3 font-mono text-[11px] text-foreground whitespace-pre-wrap break-words">
+                    {inspect.data.payload.text}
+                  </pre>
+                  <div className="mt-1 font-mono text-[10px] text-muted-foreground">
+                    session {short(inspect.data.payload.sessionId)} ·{" "}
+                    {formatBytes(inspect.data.payload.sizeBytes)} ·{" "}
+                    {new Date(inspect.data.payload.ts).toLocaleString()}
+                  </div>
+                </div>
+              )}
+              <div className="flex flex-wrap gap-2 border-t border-border pt-3 font-mono text-[10.5px]">
+                <a
+                  href={`${STORAGE_EXPLORER}/file/${inspect.rootHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full border border-border px-3 py-1 hover:bg-secondary"
+                >
+                  StorageScan ↗
+                </a>
+                {inspect.data.ref?.txHash && (
+                  <a
+                    href={`${EXPLORER}/tx/${inspect.data.ref.txHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full border border-border px-3 py-1 hover:bg-secondary"
+                  >
+                    ChainScan ↗
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* VERIFY INFERENCE MODAL */}
+      <Dialog open={vi.open} onOpenChange={(o) => setVi((s) => ({ ...s, open: o }))}>
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-display text-base">Verify inference · OpenClaw / 0G Compute</DialogTitle>
+            <DialogDescription className="text-xs">
+              End-to-end smoke test: fund check → ledger → provider discovery → signed inference call → signature verification.
+            </DialogDescription>
+          </DialogHeader>
+          {vi.loading && (
+            <div className="py-6 text-center text-sm text-muted-foreground">
+              running smoke test against 0G compute network…
+            </div>
+          )}
+          {vi.error && (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+              {vi.error}
+            </div>
+          )}
+          {vi.data?.steps && (
+            <ol className="space-y-1.5">
+              {vi.data.steps.map((s: any, i: number) => (
+                <li
+                  key={i}
+                  className={`rounded-md border px-3 py-2 font-mono text-[11px] ${
+                    s.ok ? "border-border bg-surface" : "border-destructive/40 bg-destructive/5"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={s.ok ? "text-foreground" : "text-destructive"}>
+                      {s.ok ? "✓" : "✗"} {s.step}
+                    </span>
+                    <span className="text-muted-foreground">{s.latencyMs}ms</span>
+                  </div>
+                  {s.detail && (
+                    <div className="mt-1 break-all text-muted-foreground">{s.detail}</div>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+          {vi.data?.reply && (
+            <div className="space-y-2 border-t border-border pt-3">
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Provider reply
+                </div>
+                <pre className="mt-1 rounded-md border border-border bg-surface p-3 font-mono text-[11px] whitespace-pre-wrap">
+                  {vi.data.reply}
+                </pre>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 font-mono text-[10.5px]">
+                <div className="rounded-md border border-border bg-surface px-3 py-2">
+                  <div className="text-muted-foreground">model</div>
+                  <div className="break-all">{vi.data.model}</div>
+                </div>
+                <div className="rounded-md border border-border bg-surface px-3 py-2">
+                  <div className="text-muted-foreground">provider</div>
+                  <div className="break-all">{vi.data.provider}</div>
+                </div>
+                <div className="rounded-md border border-border bg-surface px-3 py-2 sm:col-span-2">
+                  <div className="text-muted-foreground">inference tx / chat id</div>
+                  <div className="break-all">{vi.data.chatId || "—"}</div>
+                </div>
+                <div className="rounded-md border border-border bg-surface px-3 py-2">
+                  <div className="text-muted-foreground">signature</div>
+                  <div className={vi.data.verified ? "text-green-500" : "text-yellow-500"}>
+                    {vi.data.verified ? "✓ verified on-chain" : "unverified"}
+                  </div>
+                </div>
+                <div className="rounded-md border border-border bg-surface px-3 py-2">
+                  <div className="text-muted-foreground">ledger balance</div>
+                  <div>{vi.data.ledgerOG?.toFixed?.(5) ?? vi.data.ledgerOG} OG</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
