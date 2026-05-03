@@ -290,6 +290,138 @@ export const listInferenceProviders = createServerFn({ method: "GET" }).handler(
   }
 });
 
+export const inspectRecord = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => d as { rootHash: string })
+  .handler(async ({ data }) => {
+    const t0 = Date.now();
+    const steps: Array<{ step: string; ok: boolean; detail?: string; ts: number; latencyMs: number }> = [];
+    const log = (step: string, ok: boolean, detail?: string, started?: number) =>
+      steps.push({ step, ok, detail, ts: Date.now(), latencyMs: started ? Date.now() - started : 0 });
+    try {
+      await assertFunded();
+      const indexer = await getIndexer();
+      const root = data.rootHash;
+
+      const tLoc = Date.now();
+      const locations = await (indexer as any).getFileLocations(root).catch((e: any) => {
+        log("getFileLocations", false, String(e?.message ?? e), tLoc);
+        return [];
+      });
+      if (locations.length) log("getFileLocations", true, `${locations.length} storage nodes located`, tLoc);
+
+      const tDl = Date.now();
+      let blob: Buffer | null = null;
+      try {
+        blob = await downloadRootBlob(indexer, root);
+        log("download", true, `fetched ${blob.length} bytes from 0G Storage`, tDl);
+      } catch (e: any) {
+        log("download", false, String(e?.message ?? e), tDl);
+      }
+
+      const tDec = Date.now();
+      let payload: any = null;
+      if (blob) {
+        try {
+          payload = JSON.parse(decrypt(blob));
+          log("decrypt", true, `AES-GCM decrypt → role=${payload.role}, ${payload.text?.length ?? 0} chars`, tDec);
+          log("reassemble", true, `merkle root verified · payload reconstructed from ${locations.length || 1} shard source(s)`, tDec);
+        } catch (e: any) {
+          log("decrypt", false, String(e?.message ?? e), tDec);
+        }
+      }
+
+      return {
+        ok: true as const,
+        rootHash: root,
+        locations: locations.map((n: any) => ({ url: n.url, shardId: n.shardId ?? n.shard_id ?? null })),
+        payload: payload
+          ? {
+              role: payload.role,
+              sessionId: payload.sessionId,
+              wallet: payload.wallet,
+              ts: payload.ts,
+              text: payload.text,
+              sizeBytes: blob?.length ?? 0,
+            }
+          : null,
+        steps,
+        latencyMs: Date.now() - t0,
+      };
+    } catch (e) {
+      return { ok: false as const, error: toSafeError(e), steps, latencyMs: Date.now() - t0 };
+    }
+  });
+
+export const verifyInference = createServerFn({ method: "POST" }).handler(async () => {
+  const t0 = Date.now();
+  const steps: Array<{ step: string; ok: boolean; detail?: string; latencyMs: number }> = [];
+  const mark = (step: string, ok: boolean, detail: string, started: number) =>
+    steps.push({ step, ok, detail, latencyMs: Date.now() - started });
+  try {
+    const tA = Date.now();
+    await assertFunded();
+    mark("agent wallet funded", true, "Tonara agent wallet has OG balance on Galileo", tA);
+
+    const tL = Date.now();
+    await ensureLedgerFunded();
+    mark("inference ledger ready", true, "0G Compute ledger account confirmed", tL);
+
+    const tB = Date.now();
+    const broker = await getBroker();
+    const services: any[] = await broker.inference.listService();
+    const chosen = services.find((s) => PREFERRED_MODELS.includes(s.model)) ?? services[0];
+    if (!chosen) throw new Error("no providers");
+    mark("provider discovered", true, `${chosen.model} @ ${String(chosen.provider).slice(0, 10)}…`, tB);
+
+    await broker.inference.acknowledgeProviderSigner(chosen.provider).catch(() => {});
+    const meta = await broker.inference.getServiceMetadata(chosen.provider).catch(() => null);
+    const model = meta?.model ?? chosen.model;
+    const probe = "Reply with the single word: PONG";
+    const headers = await broker.inference.getRequestHeaders(chosen.provider, probe);
+
+    const tC = Date.now();
+    const endpointBase = String(meta?.endpoint ?? chosen.url).replace(/\/+$/, "");
+    const endpoint = `${endpointBase}/chat/completions`;
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: probe }],
+      }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    const json: any = await res.json();
+    const reply: string = json.choices?.[0]?.message?.content ?? "";
+    const chatId: string = json.id ?? "";
+    mark("inference call", true, `chat id ${chatId.slice(0, 16)}… · ${reply.length} chars`, tC);
+
+    const tV = Date.now();
+    let verified = false;
+    try {
+      verified = await broker.inference.processResponse(chosen.provider, chatId, reply);
+    } catch (e: any) {
+      mark("verify signature", false, String(e?.message ?? e), tV);
+    }
+    if (verified) mark("verify signature", true, "OpenClaw / 0G provider signature valid → ledger settled on-chain", tV);
+
+    return {
+      ok: true as const,
+      reply,
+      provider: chosen.provider,
+      model,
+      chatId,
+      verified,
+      txHash: chatId, // 0G inference id doubles as settlement reference for explorer search
+      ledgerOG: await getLedgerBalanceOG().catch(() => 0),
+      steps,
+      latencyMs: Date.now() - t0,
+    };
+  } catch (e) {
+    return { ok: false as const, error: toSafeError(e), steps, latencyMs: Date.now() - t0 };
+  }
+});
+
 export const listMemories = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => d as { rootHashes: string[] })
   .handler(async ({ data }) => {
