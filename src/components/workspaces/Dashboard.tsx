@@ -313,6 +313,12 @@ export function Dashboard() {
                 </button>
               )}
               <button
+                onClick={runVerifyInference}
+                className="rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
+              >
+                Verify inference
+              </button>
+              <button
                 onClick={() => {
                   refreshSnapshot();
                   refreshProviders();
