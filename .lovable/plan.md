@@ -1,103 +1,158 @@
-# Plan — Live 0G Dashboard + Mnemos/Atlas Verification
 
-## What you'll get
+# Full Mainnet Deployment — All Tonara Contracts on 0G Aristotle
 
-1. A new **Dashboard** tab in the workspace switcher (alongside Mnemos and Atlas) that shows **live data from 0G**, not localStorage:
-   - Agent wallet address + on-chain OG balance (testnet)
-   - **InferenceLedger balance** (real, polled every 15s)
-   - **On-chain memory record count** for your connected wallet
-   - **Recent records** table (last 10) with root hash, size, timestamp, and link to 0G chainscan
-   - Live status pill: `0G online` / `unfunded` / `not configured`
-2. A real verification run executed by me against the live 0G testnet, with the results pasted into chat as evidence (tx hashes, root hashes, ledger balance, inference latency, model used, verified=true/false).
-3. A short "what Mnemos does / what Atlas does / what to build next" section so you can hand it to a tester.
+Five contracts total, deployed via Remix IDE, then wired into the app. You don't need Hardhat or Foundry — everything works in the browser.
+
+## Contract overview
+
+| # | Contract | Purpose | Required? |
+|---|---|---|---|
+| 1 | **Tonara.sol** (ERC-20) | $TONARA token — identity, payments, judging proof | Yes |
+| 2 | **MemoryRegistry.sol** | On-chain log of every encrypted memory root hash per user | Yes |
+| 3 | **InferenceLedger.sol** | Pre-paid OG balance per user; agent debits per inference | Yes |
+| 4 | **AgentRegistry.sol** | Registry of agents (Mnemos, Atlas, future custom) | Recommended |
+| 5 | **SessionAccess.sol** | Lets a user grant a teammate read access to a session | Optional (skip for hackathon) |
+
+For the hackathon I recommend **#1, #2, #3, #4** (skip #5 — not on the demo path).
 
 ---
 
-## Current state (verified by reading the code)
+## Phase 0 — One-time setup (you, ~10 min)
 
-- `ZG_PRIVATE_KEY` and `ZG_MEMORY_ENC_KEY` secrets are **already set** — the "not configured" warning won't appear anymore.
-- Server functions that already work and hit real 0G testnet:
-  - `chat0g` → 0G Compute broker, picks `llama-3.3-70b-instruct` or `deepseek-r1-70b`, returns `verified` flag from broker `processResponse`.
-  - `commitMemory` → AES-256-GCM encrypts, uploads via `Indexer.upload`, returns real `rootHash` + `txHash`.
-  - `recallMemories` → downloads by root hash, decrypts, returns memories.
-  - `zgStatus` → returns wallet address + ledger OG.
-- **Gap that makes the dashboard "feel dummy" today**: the list of root hashes is stored in `localStorage` per wallet. There is no server function that returns "all my records" from 0G directly, and no UI surface that shows them.
+1. Add **0G Aristotle Mainnet** to MetaMask:
+   ```text
+   Network name:  0G Mainnet (Aristotle)
+   RPC URL:       https://evmrpc.0g.ai
+   Chain ID:      16661
+   Symbol:        OG
+   Explorer:      https://chainscan.0g.ai
+   ```
+2. Fund the wallet with **~3 OG** (enough to deploy all 4 contracts + a few test txns).
+3. Open https://remix.ethereum.org. Left sidebar → **Deploy & run** → Environment → **Injected Provider — MetaMask**. Confirm Remix shows `Custom (16661) network`.
 
-## What I'll build
+---
 
-### 1. New server function: `listMemories`
-- Input: `{ wallet, rootHashes }` (root hashes still tracked client-side per wallet, but server now resolves them in parallel and returns metadata only — size, ts, role, sessionId — without exposing decrypted text in the dashboard list).
-- Reuses `getIndexer()` and `decrypt()`.
-- Returns `{ count, items: [{ rootHash, role, sessionId, ts, sizeBytes, latencyMs }] }`.
+## Phase 1 — Deploy order (matters!)
 
-### 2. New server function: `ledgerSnapshot`
-- Returns `{ address, walletOG, ledgerOG, services: [{provider, model, url}], chainId, blockNumber }`.
-- Single round-trip for the dashboard header.
+Deploy in this exact order because some contracts reference others:
 
-### 3. New component: `src/components/workspaces/Dashboard.tsx`
-Layout:
 ```text
-┌─────────────────────────────────────────────────────────┐
-│  0G online · Galileo testnet · block #1234567           │
-├──────────────┬──────────────┬──────────────┬────────────┤
-│ Wallet OG    │ Ledger OG    │ Records      │ Providers  │
-│ 0.0421       │ 0.0500       │ 14           │ 3 online   │
-├──────────────┴──────────────┴──────────────┴────────────┤
-│  Recent records (last 10)                               │
-│  root 0x12ab…f4 · user · 412B · 2m ago · tx ↗          │
-│  root 0x9c3d…22 · assistant · 1.2KB · 2m ago · tx ↗    │
-│  …                                                      │
-└─────────────────────────────────────────────────────────┘
+1. Tonara (ERC-20)         ← independent
+2. MemoryRegistry          ← independent
+3. InferenceLedger         ← independent
+4. AgentRegistry           ← independent
+─────────────────────────────────────────
+5. (After all four)        ← grant ROUTER_ROLE on InferenceLedger
+                              to the Tonara agent wallet
 ```
-- Polls `ledgerSnapshot` every 15s via TanStack Query.
-- Polls `listMemories` every 30s.
-- "Refresh now" button.
-- Empty state: "No records yet. Send your first message in Mnemos."
 
-### 4. Wire it into `AppShellClient.tsx`
-Add a third sidebar button "Dashboard · live 0G state" above Mnemos. Default landing tab becomes Dashboard so you see proof it's alive on first load.
-
-### 5. Verification run (I do this after implementation, in the same turn)
-I'll call the deployed server functions with `invoke-server-function`:
-- `zgStatus` → confirm wallet + ledger
-- `chat0g` with a real prompt → confirm 200, model name, latency, verified flag
-- `commitMemory` with a known string → confirm rootHash + txHash
-- `recallMemories` with that rootHash → confirm decrypt round-trips
-- Paste the JSON evidence + a chainscan link for the tx into chat.
-
-If any call fails I fix it before reporting.
+For each contract: paste the source I'll provide → compile (Solidity 0.8.24, EVM cancun) → Deploy → MetaMask confirms → copy address + tx hash.
 
 ---
 
-## Functions of each agent (for the tester)
+## Phase 2 — What you send back to me
 
-**Mnemos** — coding/blockchain research companion.
-- Every user message is encrypted (AES-256-GCM) and uploaded to 0G Storage → returns a root hash + tx hash on Galileo testnet.
-- Inference runs on 0G Compute (llama-3.3-70b or deepseek-r1-70b), with the broker's `processResponse` cryptographic verification.
-- Returning sessions with vague prompts ("what were we working on?") trigger a recall: client sends stored root hashes → server downloads + decrypts → injects as system context before inference.
-- Reply is also committed to 0G.
+After all four deploys, paste a block like this in chat:
 
-**Atlas** — cross-chain on-chain intelligence agent.
-- Same 0G inference pipeline, different system prompt (research brief: protocol summary, on-chain signals, 3 risk flags).
-- The "shard fetch" animation across 0G/ETH/SOL is a UX visualization of the manifest dispatch; the actual research output and the final memory commit are real 0G calls.
-- Each finished brief is auto-committed to encrypted memory under `sessionId="atlas"` so it shows up in your dashboard count too.
+```text
+Owner wallet:        0x...
+Agent wallet:        0x...   (the ZG_PRIVATE_KEY public address — I'll tell you what it is)
 
----
+Tonara token:        0x...   tx 0x...
+MemoryRegistry:      0x...   tx 0x...
+InferenceLedger:     0x...   tx 0x...
+AgentRegistry:       0x...   tx 0x...
+```
 
-## What's next for the smart-contract dev (mainnet)
-
-You already have the full function list in `SMART_CONTRACTS.md`. The dashboard I'm building is the **frontend that those contracts will eventually power** — once `MemoryRegistry.commit` and `InferenceLedger.balanceOf` are deployed on 0G mainnet, I just swap the data sources in `listMemories` and `ledgerSnapshot` from the testnet broker to the mainnet contract calls. No UI changes needed.
-
-Recommended next dev steps after this dashboard ships:
-1. Add a "Sessions" view that groups records by `sessionId` and lets you replay one.
-2. Add `revoke(rootHash)` once `MemoryRegistry` is on mainnet (today there's no on-chain revoke).
-3. Add per-message "verified ✓" badge in Mnemos using the broker verification result we already have but don't display.
+I'll give you the exact contract source files in the next message after you approve this plan (each is short, ~40-80 lines, all use OpenZeppelin which Remix auto-resolves).
 
 ---
 
-## Technical notes
+## Phase 3 — What I wire on the app side
 
-- All new server functions live in `src/server/zg.functions.ts` and reuse the existing singletons in `zg.core.server.ts` — no new env vars.
-- Dashboard uses TanStack Query with `refetchInterval` for real-time polling; no websockets needed.
-- Root-hash list stays in `localStorage` for now (per-wallet) because there is no on-chain registry on testnet yet; this is the exact gap the mainnet `MemoryRegistry` contract closes.
-- No changes to wallet/connect flow — RainbowKit `ConnectButton` is already in the header and working; if you don't see it, it's because the `/app` route is `ssr: false` and the wallet provider mounts client-side after hydration.
+Once you send the addresses, I'll do all of this in one shot:
+
+### 3.1 New chain config
+- `src/lib/wallet.ts` → add `zeroGMainnet` (chain 16661) alongside existing testnet entry. RainbowKit will let users pick which to connect to.
+
+### 3.2 Contract addresses + ABIs
+- New folder `src/contracts/` containing one `.json` ABI per contract + a single `addresses.ts`:
+  ```text
+  TONARA            = "0x..."
+  MEMORY_REGISTRY   = "0x..."
+  INFERENCE_LEDGER  = "0x..."
+  AGENT_REGISTRY    = "0x..."
+  ```
+
+### 3.3 Storage flow → MemoryRegistry
+- `src/server/zg.functions.ts::commitMemory`:
+  1. Encrypt + upload to 0G Storage (already works) → returns `rootHash`
+  2. **NEW**: agent wallet calls `MemoryRegistry.commitFor(user, rootHash, size, kind, sessionId)` → returns on-chain index + mainnet tx hash
+  3. Both hashes returned to the UI
+
+- `src/components/workspaces/Mnemos.tsx` & `Atlas.tsx`:
+  - Replace `localStorage` root-hash list with reads from `MemoryRegistry.recordsOf(wallet, 0, 100)`
+  - On first connect, prompt user to call `setDelegate(agentWallet, true)` so the agent can commit on their behalf (one-time tx)
+
+### 3.4 Inference billing → InferenceLedger
+- `src/server/zg.ledger.server.ts`: replace the broker's off-chain ledger with `InferenceLedger.balanceOf(user)` reads + `charge(user, provider, amount, requestId)` writes (signed by agent wallet, which holds `ROUTER_ROLE`).
+- Add a **"Top up"** button in the dashboard that calls `deposit()` (sends OG from user wallet).
+
+### 3.5 Agent registry → workspace switcher
+- `src/components/AppShellClient.tsx`: load workspace tabs from `AgentRegistry.get(...)` instead of hard-coded "Mnemos / Atlas". Future you adds a new agent by calling `register()` from MetaMask — appears in the sidebar instantly.
+- I'll register Mnemos + Atlas as part of post-deploy setup.
+
+### 3.6 $TONARA on dashboard
+- New "TONARA Balance" card with `useReadContract({ ... balanceOf })`
+- "Add to MetaMask" button (`wallet_watchAsset`)
+- Optional **"Pay with TONARA"** toggle for inference (transfers TONARA to agent wallet before each query)
+
+### 3.7 Dashboard explorer links
+- All four contract addresses + every tx hash get clickable links to `https://chainscan.0g.ai/...` so judges can verify.
+
+### 3.8 Keep testnet alive as fallback
+- 0G **Storage** + **Compute** SDKs still hit Galileo testnet (cheap, fast, free).
+- Mainnet is used for: token, memory registry, inference ledger, agent registry.
+- This hybrid is the realistic posture — 0G mainnet storage/compute is paid OG, testnet is free.
+
+### 3.9 Verification I'll run
+1. Connect wallet on 0G Mainnet → see TONARA balance, ledger balance, memory count.
+2. Send a Mnemos message → confirm:
+   - 0G Storage upload tx (testnet)
+   - `MemoryRegistry.commitFor` tx (mainnet) ← visible on chainscan.0g.ai
+   - `InferenceLedger.charge` tx (mainnet)
+3. Click any record → audit modal shows both the storage root and the mainnet registry index.
+4. Paste all the chainscan links back to you for the judge demo.
+
+---
+
+## Phase 4 — Post-deploy setup transactions (~5 min, you do these in MetaMask)
+
+After the app is wired, you'll trigger 3 small txns once:
+
+1. **Grant router role** on `InferenceLedger`: call `grantRole(ROUTER_ROLE, agentWallet)` — lets the agent debit users' ledger balance. I'll add a "Setup" admin page that does this with one click.
+2. **Register Mnemos** on `AgentRegistry`: `register("Mnemos", "0g://<manifest-root>")`
+3. **Register Atlas** on `AgentRegistry`: `register("Atlas", "0g://<manifest-root>")`
+
+I'll surface these as buttons in a new `/admin` route visible only to the deployer wallet.
+
+---
+
+## Risks / things to know
+
+- **Real OG cost**: ~0.5–1 OG total for all 4 deploys + role setup. Each MemoryRegistry commit thereafter is < 60k gas (cents).
+- **Agent wallet must have OG**: it pays gas for `commitFor` and `charge`. Top it up with ~2 OG.
+- **Don't lose deployer key**: it owns Tonara supply, AgentRegistry admin, and InferenceLedger admin. Use a fresh wallet you control.
+- **Skip SessionAccess for now**: not on the demo path. Easy to add post-hackathon.
+- **Storage on mainnet later**: if you eventually want 0G Storage on mainnet too, it's a one-line change in `src/server/zg.core.server.ts` (`ZG_RPC` + `ZG_INDEXER_RPC`).
+
+---
+
+## Your next action
+
+Reply **"go"** and I'll send you:
+1. Four ready-to-paste `.sol` files (Tonara, MemoryRegistry, InferenceLedger, AgentRegistry).
+2. The agent wallet's public address (so you know which address to delegate to and fund).
+3. Step-by-step Remix screenshots-style instructions for each deploy.
+
+After you deploy and paste the addresses, I'll do Phase 3 (full app integration) in a single build.
