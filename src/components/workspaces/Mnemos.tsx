@@ -433,6 +433,17 @@ export function Mnemos() {
                           tx {short(m.txHash)}
                         </a>
                       )}
+                      {m.mainnetTxHash && (
+                        <a
+                          href={mainnetTxUrl(m.mainnetTxHash)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="ml-1 rounded-sm border border-current px-1 underline"
+                          title="Anchored on 0G Aristotle Mainnet"
+                        >
+                          ⛓ mainnet
+                        </a>
+                      )}
                     </div>
                   )}
                 </div>
