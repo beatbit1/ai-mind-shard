@@ -79,6 +79,20 @@ export function Dashboard() {
   const verifyFn = useServerFn(verifyTxs);
   const inspectFn = useServerFn(inspectRecord);
   const verifyInferenceFn = useServerFn(verifyInference);
+  const mainnetSnapFn = useServerFn(mainnetSnapshot);
+  const mainnetUserFn = useServerFn(mainnetUserStats);
+
+  const [mainnet, setMainnet] = useState<{
+    agent: string;
+    agentBalanceOG: number;
+    blockNumber: number;
+    err?: string;
+  } | null>(null);
+  const [mainnetUser, setMainnetUser] = useState<{
+    tonara: number;
+    memCount: number;
+    ledger: number;
+  } | null>(null);
 
   const [snap, setSnap] = useState<SnapshotState>({ status: "loading" });
   const [providers, setProviders] = useState<ProviderItem[]>([]);
