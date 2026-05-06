@@ -184,7 +184,26 @@ export function Dashboard() {
     setActions(all.slice(0, 25));
   }
 
-  async function refreshTxStatus(hashes: string[]) {
+  async function refreshMainnet() {
+    try {
+      const r: any = await mainnetSnapFn({});
+      if (r.ok) {
+        setMainnet({ agent: r.agent, agentBalanceOG: r.agentBalanceOG, blockNumber: r.blockNumber });
+      } else {
+        setMainnet({ agent: r.agent ?? "", agentBalanceOG: 0, blockNumber: 0, err: r.error });
+      }
+    } catch (e) {
+      setMainnet({ agent: "", agentBalanceOG: 0, blockNumber: 0, err: e instanceof Error ? e.message : String(e) });
+    }
+    if (isConnected && address) {
+      try {
+        const r: any = await mainnetUserFn({ data: { wallet: address } });
+        if (r.ok) {
+          setMainnetUser({ tonara: r.tonaraBalance, memCount: r.memoryCount, ledger: r.ledgerBalanceOG });
+        }
+      } catch { /* ignore */ }
+    }
+  }
     const uniq = Array.from(new Set(hashes.filter(Boolean)));
     if (uniq.length === 0) return;
     try {
