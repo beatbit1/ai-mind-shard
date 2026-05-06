@@ -8,8 +8,10 @@ import {
   ts,
 } from "./RecallTrace";
 import { chat0g, commitMemory, recallMemories, zgStatus } from "@/server/zg.functions";
+import { anchorMemoryOnMainnet } from "@/server/zg.mainnet.functions";
 import { appendMemoryRecord, getMemoryRoots } from "@/lib/memoryRecords";
 import { appendAgentAction } from "@/lib/agentActions";
+import { mainnetTxUrl } from "@/contracts/addresses";
 
 type Msg = {
   id: string;
@@ -17,6 +19,7 @@ type Msg = {
   text: string;
   rootHash?: string;
   txHash?: string;
+  mainnetTxHash?: string;
 };
 
 const SEEDS = [
@@ -54,6 +57,7 @@ export function Mnemos() {
   const commitFn = useServerFn(commitMemory);
   const recallFn = useServerFn(recallMemories);
   const statusFn = useServerFn(zgStatus);
+  const anchorFn = useServerFn(anchorMemoryOnMainnet);
 
   useEffect(() => {
     setMessages(loadLocal());
@@ -154,6 +158,50 @@ export function Mnemos() {
         cost: `${commitUser.sizeBytes}B`,
         memoryId: short(commitUser.rootHash),
       });
+
+      // Anchor on 0G Aristotle Mainnet (best-effort; requires user to have called setDelegate once)
+      if (isConnected && address) {
+        pushTrace("info", "anchoring on 0G Mainnet · MemoryRegistry.commitFor");
+        try {
+          const anchor: any = await anchorFn({
+            data: {
+              owner: address,
+              rootHash: commitUser.rootHash,
+              sizeBytes: commitUser.sizeBytes,
+              role: "user",
+              sessionId,
+            },
+          });
+          if (anchor.ok) {
+            userMsg.mainnetTxHash = anchor.txHash;
+            appendMemoryRecord(wallet, {
+              rootHash: commitUser.rootHash,
+              txHash: commitUser.txHash,
+              role: "user",
+              sessionId,
+              ts: Date.now(),
+              sizeBytes: commitUser.sizeBytes,
+              source: "mnemos",
+              mainnetTxHash: anchor.txHash,
+              mainnetIndex: anchor.index,
+            });
+            setMessages([...next]);
+            pushTrace("ok", `mainnet anchored · idx #${anchor.index} · ${short(anchor.txHash)}`);
+            appendAgentAction(wallet, {
+              kind: "cross-chain",
+              source: "mnemos",
+              label: `MemoryRegistry.commitFor → 0G Aristotle Mainnet · idx ${anchor.index}`,
+              txHash: anchor.txHash,
+              rootHash: commitUser.rootHash,
+              ok: true,
+            });
+          } else {
+            pushTrace("warn", `mainnet · ${anchor.error}`);
+          }
+        } catch (e) {
+          pushTrace("warn", `mainnet anchor failed · ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
     } else {
       pushTrace("err", `storage · ${commitUser.error.message}`);
       setZgError(commitUser.error.message);
@@ -266,6 +314,49 @@ export function Mnemos() {
         assistantMsg.txHash = commitA.txHash;
         setMessages([...next]);
         pushTrace("ok", `committed · root ${short(commitA.rootHash)} · tx ${short(commitA.txHash)}`);
+
+        // Anchor assistant reply on mainnet too
+        if (isConnected && address) {
+          try {
+            const anchor: any = await anchorFn({
+              data: {
+                owner: address,
+                rootHash: commitA.rootHash,
+                sizeBytes: commitA.sizeBytes,
+                role: "assistant",
+                sessionId,
+              },
+            });
+            if (anchor.ok) {
+              assistantMsg.mainnetTxHash = anchor.txHash;
+              appendMemoryRecord(wallet, {
+                rootHash: commitA.rootHash,
+                txHash: commitA.txHash,
+                role: "assistant",
+                sessionId,
+                ts: Date.now(),
+                sizeBytes: commitA.sizeBytes,
+                source: "mnemos",
+                mainnetTxHash: anchor.txHash,
+                mainnetIndex: anchor.index,
+              });
+              setMessages([...next]);
+              pushTrace("ok", `mainnet anchored · idx #${anchor.index}`);
+              appendAgentAction(wallet, {
+                kind: "cross-chain",
+                source: "mnemos",
+                label: `MemoryRegistry.commitFor (assistant) → mainnet · idx ${anchor.index}`,
+                txHash: anchor.txHash,
+                rootHash: commitA.rootHash,
+                ok: true,
+              });
+            } else {
+              pushTrace("warn", `mainnet · ${anchor.error}`);
+            }
+          } catch (e) {
+            pushTrace("warn", `mainnet anchor failed · ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
       } else {
         pushTrace("warn", `reply not persisted · ${commitA.error.message}`);
         appendAgentAction(wallet, {
@@ -340,6 +431,17 @@ export function Mnemos() {
                           className="underline"
                         >
                           tx {short(m.txHash)}
+                        </a>
+                      )}
+                      {m.mainnetTxHash && (
+                        <a
+                          href={mainnetTxUrl(m.mainnetTxHash)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="ml-1 rounded-sm border border-current px-1 underline"
+                          title="Anchored on 0G Aristotle Mainnet"
+                        >
+                          ⛓ mainnet
                         </a>
                       )}
                     </div>

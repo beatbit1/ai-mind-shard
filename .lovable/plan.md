@@ -1,158 +1,106 @@
+# Tonara × 0G Mainnet Integration
 
-# Full Mainnet Deployment — All Tonara Contracts on 0G Aristotle
+You deployed all 4 contracts on **0G Aristotle mainnet (chain 16661)**. This plan wires them into the app, commits the `.sol` sources to the repo (so they survive Remix), and surfaces real mainnet txns in the UI.
 
-Five contracts total, deployed via Remix IDE, then wired into the app. You don't need Hardhat or Foundry — everything works in the browser.
-
-## Contract overview
-
-| # | Contract | Purpose | Required? |
-|---|---|---|---|
-| 1 | **Tonara.sol** (ERC-20) | $TONARA token — identity, payments, judging proof | Yes |
-| 2 | **MemoryRegistry.sol** | On-chain log of every encrypted memory root hash per user | Yes |
-| 3 | **InferenceLedger.sol** | Pre-paid OG balance per user; agent debits per inference | Yes |
-| 4 | **AgentRegistry.sol** | Registry of agents (Mnemos, Atlas, future custom) | Recommended |
-| 5 | **SessionAccess.sol** | Lets a user grant a teammate read access to a session | Optional (skip for hackathon) |
-
-For the hackathon I recommend **#1, #2, #3, #4** (skip #5 — not on the demo path).
-
----
-
-## Phase 0 — One-time setup (you, ~10 min)
-
-1. Add **0G Aristotle Mainnet** to MetaMask:
-   ```text
-   Network name:  0G Mainnet (Aristotle)
-   RPC URL:       https://evmrpc.0g.ai
-   Chain ID:      16661
-   Symbol:        OG
-   Explorer:      https://chainscan.0g.ai
-   ```
-2. Fund the wallet with **~3 OG** (enough to deploy all 4 contracts + a few test txns).
-3. Open https://remix.ethereum.org. Left sidebar → **Deploy & run** → Environment → **Injected Provider — MetaMask**. Confirm Remix shows `Custom (16661) network`.
-
----
-
-## Phase 1 — Deploy order (matters!)
-
-Deploy in this exact order because some contracts reference others:
+## Deployed contracts (recorded)
 
 ```text
-1. Tonara (ERC-20)         ← independent
-2. MemoryRegistry          ← independent
-3. InferenceLedger         ← independent
-4. AgentRegistry           ← independent
-─────────────────────────────────────────
-5. (After all four)        ← grant ROUTER_ROLE on InferenceLedger
-                              to the Tonara agent wallet
+Tonara (ERC-20):    0x9fBe747Acd390198295c848ed7EdF38942237935
+   ⚠ NOTE: same address as MemoryRegistry below — likely a copy/paste mix-up
+MemoryRegistry:     0x9fBe747Acd390198295c848ed7EdF38942237935
+InferenceLedger:    0x739280dD1Cf1B8e9d648C7f315736085a4191A2A
+AgentRegistry:      0xc6DA0F91b357308097760464bcD86A119950B896
 ```
 
-For each contract: paste the source I'll provide → compile (Solidity 0.8.24, EVM cancun) → Deploy → MetaMask confirms → copy address + tx hash.
+**Question I need answered before wiring:** the Tonara token address and the MemoryRegistry address you pasted are identical. Only one contract can live at any address. Almost certainly the **Tonara ERC-20 address from your earlier message is the real Tonara token**, and `0x9fBe...7935` from this message is **MemoryRegistry**. I'll proceed assuming that. If wrong, tell me and I'll swap one address in `addresses.ts`. this is memoryregistry contract address 0x3E045a00179510c8fe6358CD93fA8F1BEE7e293e this is the real one 
 
 ---
 
-## Phase 2 — What you send back to me
+## What I'll build
 
-After all four deploys, paste a block like this in chat:
+### 1. Commit the 4 `.sol` files to the repo
 
-```text
-Owner wallet:        0x...
-Agent wallet:        0x...   (the ZG_PRIVATE_KEY public address — I'll tell you what it is)
+- New folder `contracts/` at repo root with:
+  - `Tonara.sol`, `MemoryRegistry.sol`, `InferenceLedger.sol`, `AgentRegistry.sol`
+  - `README.md` listing addresses, tx hashes, deployer, network
+- Auto-syncs to your GitHub repo (no manual git work).
 
-Tonara token:        0x...   tx 0x...
-MemoryRegistry:      0x...   tx 0x...
-InferenceLedger:     0x...   tx 0x...
-AgentRegistry:       0x...   tx 0x...
-```
+### 2. Add mainnet chain + addresses + ABIs
 
-I'll give you the exact contract source files in the next message after you approve this plan (each is short, ~40-80 lines, all use OpenZeppelin which Remix auto-resolves).
+- `src/lib/wallet.ts`: add `zeroGMainnet` (chain 16661, RPC `https://evmrpc.0g.ai`, explorer `https://chainscan.0g.ai`) — RainbowKit will let users pick mainnet or testnet.
+- New folder `src/contracts/`:
+  - `addresses.ts` — exports the 4 addresses + chain id
+  - `MemoryRegistry.abi.json`, `InferenceLedger.abi.json`, `AgentRegistry.abi.json`, `Tonara.abi.json` (the JSONs you pasted)
 
----
+### 3. Server-side: agent commits memory roots to mainnet
 
-## Phase 3 — What I wire on the app side
+- New `src/server/zg.contracts.server.ts`:
+  - Mainnet `JsonRpcProvider` + `Wallet` (uses existing `ZG_PRIVATE_KEY` — the same agent wallet you funded)
+  - Helpers: `commitMemoryOnChain(owner, rootHash, sizeBytes, kind, sessionId)`, `chargeInference(user, provider, amount, requestId)`, `getOnChainBalance(user)`
+- `src/server/zg.functions.ts::commitMemory`: after the 0G Storage upload, call `MemoryRegistry.commitFor(...)` from the agent wallet → return both the storage `txHash` (testnet) AND the new `mainnetTxHash` + `recordIndex`.
 
-Once you send the addresses, I'll do all of this in one shot:
+### 4. UI surfacing of mainnet activity
 
-### 3.1 New chain config
-- `src/lib/wallet.ts` → add `zeroGMainnet` (chain 16661) alongside existing testnet entry. RainbowKit will let users pick which to connect to.
+- **Dashboard** (`src/components/workspaces/Dashboard.tsx`):
+  - New "Mainnet Contracts" card showing all 4 addresses, each linking to `chainscan.0g.ai/address/<addr>`
+  - "TONARA Balance" tile (reads `balanceOf(wallet)` from the token contract)
+  - "On-chain memories" tile (reads `MemoryRegistry.recordCount(wallet)`)
+  - Audit modal: when a memory has a mainnet tx, show "Verified on 0G Mainnet ✓" + link
+- **Mnemos** (`src/components/workspaces/Mnemos.tsx`):
+  - Store `mainnetTxHash` alongside `rootHash` in `appendMemoryRecord` (extend `MemoryRecordRef` type)
+  - Show a small "⛓ mainnet anchored" badge under each saved exchange
+- **WalletConnect**: when user is on testnet, show a one-click "Switch to 0G Mainnet" prompt before they can anchor memories on-chain.
 
-### 3.2 Contract addresses + ABIs
-- New folder `src/contracts/` containing one `.json` ABI per contract + a single `addresses.ts`:
-  ```text
-  TONARA            = "0x..."
-  MEMORY_REGISTRY   = "0x..."
-  INFERENCE_LEDGER  = "0x..."
-  AGENT_REGISTRY    = "0x..."
-  ```
+### 5. One-time delegation prompt
 
-### 3.3 Storage flow → MemoryRegistry
-- `src/server/zg.functions.ts::commitMemory`:
-  1. Encrypt + upload to 0G Storage (already works) → returns `rootHash`
-  2. **NEW**: agent wallet calls `MemoryRegistry.commitFor(user, rootHash, size, kind, sessionId)` → returns on-chain index + mainnet tx hash
-  3. Both hashes returned to the UI
+First time a user connects on mainnet, prompt: "Allow Tonara agent to anchor your memories on-chain?" → calls `MemoryRegistry.setDelegate(agentWallet, true)` from MetaMask. After that, all `commitFor` calls succeed silently. This is the ONE tx the user pays for — every subsequent commit is paid by the agent wallet.
 
-- `src/components/workspaces/Mnemos.tsx` & `Atlas.tsx`:
-  - Replace `localStorage` root-hash list with reads from `MemoryRegistry.recordsOf(wallet, 0, 100)`
-  - On first connect, prompt user to call `setDelegate(agentWallet, true)` so the agent can commit on their behalf (one-time tx)
+### 6. README updates
 
-### 3.4 Inference billing → InferenceLedger
-- `src/server/zg.ledger.server.ts`: replace the broker's off-chain ledger with `InferenceLedger.balanceOf(user)` reads + `charge(user, provider, amount, requestId)` writes (signed by agent wallet, which holds `ROUTER_ROLE`).
-- Add a **"Top up"** button in the dashboard that calls `deposit()` (sends OG from user wallet).
-
-### 3.5 Agent registry → workspace switcher
-- `src/components/AppShellClient.tsx`: load workspace tabs from `AgentRegistry.get(...)` instead of hard-coded "Mnemos / Atlas". Future you adds a new agent by calling `register()` from MetaMask — appears in the sidebar instantly.
-- I'll register Mnemos + Atlas as part of post-deploy setup.
-
-### 3.6 $TONARA on dashboard
-- New "TONARA Balance" card with `useReadContract({ ... balanceOf })`
-- "Add to MetaMask" button (`wallet_watchAsset`)
-- Optional **"Pay with TONARA"** toggle for inference (transfers TONARA to agent wallet before each query)
-
-### 3.7 Dashboard explorer links
-- All four contract addresses + every tx hash get clickable links to `https://chainscan.0g.ai/...` so judges can verify.
-
-### 3.8 Keep testnet alive as fallback
-- 0G **Storage** + **Compute** SDKs still hit Galileo testnet (cheap, fast, free).
-- Mainnet is used for: token, memory registry, inference ledger, agent registry.
-- This hybrid is the realistic posture — 0G mainnet storage/compute is paid OG, testnet is free.
-
-### 3.9 Verification I'll run
-1. Connect wallet on 0G Mainnet → see TONARA balance, ledger balance, memory count.
-2. Send a Mnemos message → confirm:
-   - 0G Storage upload tx (testnet)
-   - `MemoryRegistry.commitFor` tx (mainnet) ← visible on chainscan.0g.ai
-   - `InferenceLedger.charge` tx (mainnet)
-3. Click any record → audit modal shows both the storage root and the mainnet registry index.
-4. Paste all the chainscan links back to you for the judge demo.
+- `contracts/README.md`: deployment record + ABIs reference
+- Top-level note in `SMART_CONTRACTS.md`: "✅ Deployed to 0G Aristotle mainnet" with the 4 addresses
 
 ---
 
-## Phase 4 — Post-deploy setup transactions (~5 min, you do these in MetaMask)
+## Post-deploy txns you'll do (one-time, ~3 MetaMask clicks)
 
-After the app is wired, you'll trigger 3 small txns once:
+After I push the integration, you'll trigger 3 small admin txns from MetaMask via a new `/admin` page (only visible to your deployer wallet):
 
-1. **Grant router role** on `InferenceLedger`: call `grantRole(ROUTER_ROLE, agentWallet)` — lets the agent debit users' ledger balance. I'll add a "Setup" admin page that does this with one click.
-2. **Register Mnemos** on `AgentRegistry`: `register("Mnemos", "0g://<manifest-root>")`
-3. **Register Atlas** on `AgentRegistry`: `register("Atlas", "0g://<manifest-root>")`
+1. `**InferenceLedger.grantRole(ROUTER_ROLE, agentWallet)**` — lets the agent debit user balances. I'll give you the agent wallet address in chat once the wiring is done (it's the public address of `ZG_PRIVATE_KEY`).
+2. `**AgentRegistry.register("Mnemos", "0g://mnemos-manifest")**`
+3. `**AgentRegistry.register("Atlas", "0g://atlas-manifest")**`
 
-I'll surface these as buttons in a new `/admin` route visible only to the deployer wallet.
+Each is < 0.01 OG.
 
 ---
 
-## Risks / things to know
+## What stays on testnet (intentionally)
 
-- **Real OG cost**: ~0.5–1 OG total for all 4 deploys + role setup. Each MemoryRegistry commit thereafter is < 60k gas (cents).
-- **Agent wallet must have OG**: it pays gas for `commitFor` and `charge`. Top it up with ~2 OG.
-- **Don't lose deployer key**: it owns Tonara supply, AgentRegistry admin, and InferenceLedger admin. Use a fresh wallet you control.
-- **Skip SessionAccess for now**: not on the demo path. Easy to add post-hackathon.
-- **Storage on mainnet later**: if you eventually want 0G Storage on mainnet too, it's a one-line change in `src/server/zg.core.server.ts` (`ZG_RPC` + `ZG_INDEXER_RPC`).
+- 0G **Storage** uploads (cheap, fast — testnet is the right cost profile for chatty memories)
+- 0G **Compute** inference (paid via the broker's testnet ledger)
+
+What's on mainnet:
+
+- $TONARA token, MemoryRegistry anchors, InferenceLedger settlement, AgentRegistry
+
+This hybrid is the realistic posture for the hackathon demo and matches the original plan.
+
+---
+
+## Risks / things to flag
+
+- **The Tonara/MemoryRegistry address collision** — please confirm which is which before I push, or I'll assume the labelling above.
+- **Agent wallet needs OG on mainnet** to pay gas for `commitFor` and `charge`. Top it up with ~1–2 OG. Send me its address verification once I show it to you.
+- **Compiling Solidity in CI**: I'll commit raw `.sol` source only — no Hardhat/Foundry build. The repo stays clean; the contracts are already deployed so we don't need to recompile.
 
 ---
 
 ## Your next action
 
-Reply **"go"** and I'll send you:
-1. Four ready-to-paste `.sol` files (Tonara, MemoryRegistry, InferenceLedger, AgentRegistry).
-2. The agent wallet's public address (so you know which address to delegate to and fund).
-3. Step-by-step Remix screenshots-style instructions for each deploy.
+Reply **"go"** and I'll do all 6 sections in one build, then tell you:
 
-After you deploy and paste the addresses, I'll do Phase 3 (full app integration) in a single build.
+1. The agent wallet address to fund + delegate to
+2. The 3 admin txns to trigger from `/admin`
+3. Test steps to verify mainnet activity shows up in the dashboard  
+  
+go, let integrate everything and send me the agent wallet too then verify sand test if everything are working, then add all contract sol addresses on the github repo and explorer link for judges verification. 

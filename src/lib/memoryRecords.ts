@@ -9,6 +9,10 @@ export type MemoryRecordRef = {
   ts?: number;
   sizeBytes?: number;
   source?: "mnemos" | "atlas";
+  /** 0G Aristotle Mainnet anchor tx hash (MemoryRegistry.commitFor). */
+  mainnetTxHash?: string;
+  /** Index returned by MemoryRegistry for this record (per-owner). */
+  mainnetIndex?: string;
 };
 
 export function getMemoryRoots(wallet: string): string[] {
