@@ -9,9 +9,11 @@ import {
   verifyInference,
   verifyTxs,
 } from "@/server/zg.functions";
+import { mainnetSnapshot, mainnetUserStats } from "@/server/zg.mainnet.functions";
 import { getMemoryRecordRefs, getMemoryRoots, type MemoryRecordRef } from "@/lib/memoryRecords";
 import { getAgentActions, appendAgentAction, type AgentAction } from "@/lib/agentActions";
 import { zeroGTestnet } from "@/lib/wallet";
+import { CONTRACTS, DEPLOY_TXS, mainnetAddrUrl, mainnetTxUrl, ZG_MAINNET_CHAIN_ID } from "@/contracts/addresses";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +24,7 @@ import {
 
 const EXPLORER = "https://chainscan-galileo.0g.ai";
 const STORAGE_EXPLORER = "https://storagescan-galileo.0g.ai";
+const MAINNET_EXPLORER = "https://chainscan.0g.ai";
 
 type SnapshotData = {
   address: string;
