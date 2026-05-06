@@ -780,6 +780,7 @@ export function Dashboard() {
         </div>
       </div>
 
+      {providers.length > 0 && (
         <div className="rounded-2xl border border-border bg-surface p-1">
           <div className="rounded-xl bg-background p-5 lg:p-6">
             <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
