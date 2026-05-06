@@ -8,8 +8,10 @@ import {
   ts,
 } from "./RecallTrace";
 import { chat0g, commitMemory, recallMemories, zgStatus } from "@/server/zg.functions";
+import { anchorMemoryOnMainnet } from "@/server/zg.mainnet.functions";
 import { appendMemoryRecord, getMemoryRoots } from "@/lib/memoryRecords";
 import { appendAgentAction } from "@/lib/agentActions";
+import { mainnetTxUrl } from "@/contracts/addresses";
 
 type Msg = {
   id: string;
@@ -17,6 +19,7 @@ type Msg = {
   text: string;
   rootHash?: string;
   txHash?: string;
+  mainnetTxHash?: string;
 };
 
 const SEEDS = [
