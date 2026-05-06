@@ -57,6 +57,7 @@ export function Mnemos() {
   const commitFn = useServerFn(commitMemory);
   const recallFn = useServerFn(recallMemories);
   const statusFn = useServerFn(zgStatus);
+  const anchorFn = useServerFn(anchorMemoryOnMainnet);
 
   useEffect(() => {
     setMessages(loadLocal());
