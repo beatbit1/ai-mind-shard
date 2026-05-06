@@ -314,6 +314,49 @@ export function Mnemos() {
         assistantMsg.txHash = commitA.txHash;
         setMessages([...next]);
         pushTrace("ok", `committed · root ${short(commitA.rootHash)} · tx ${short(commitA.txHash)}`);
+
+        // Anchor assistant reply on mainnet too
+        if (isConnected && address) {
+          try {
+            const anchor: any = await anchorFn({
+              data: {
+                owner: address,
+                rootHash: commitA.rootHash,
+                sizeBytes: commitA.sizeBytes,
+                role: "assistant",
+                sessionId,
+              },
+            });
+            if (anchor.ok) {
+              assistantMsg.mainnetTxHash = anchor.txHash;
+              appendMemoryRecord(wallet, {
+                rootHash: commitA.rootHash,
+                txHash: commitA.txHash,
+                role: "assistant",
+                sessionId,
+                ts: Date.now(),
+                sizeBytes: commitA.sizeBytes,
+                source: "mnemos",
+                mainnetTxHash: anchor.txHash,
+                mainnetIndex: anchor.index,
+              });
+              setMessages([...next]);
+              pushTrace("ok", `mainnet anchored · idx #${anchor.index}`);
+              appendAgentAction(wallet, {
+                kind: "cross-chain",
+                source: "mnemos",
+                label: `MemoryRegistry.commitFor (assistant) → mainnet · idx ${anchor.index}`,
+                txHash: anchor.txHash,
+                rootHash: commitA.rootHash,
+                ok: true,
+              });
+            } else {
+              pushTrace("warn", `mainnet · ${anchor.error}`);
+            }
+          } catch (e) {
+            pushTrace("warn", `mainnet anchor failed · ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
       } else {
         pushTrace("warn", `reply not persisted · ${commitA.error.message}`);
         appendAgentAction(wallet, {
