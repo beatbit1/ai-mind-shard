@@ -652,7 +652,134 @@ export function Dashboard() {
         </div>
       </div>
 
-      {providers.length > 0 && (
+      {/* MAINNET CONTRACTS */}
+      <div className="rounded-2xl border border-border bg-surface p-1">
+        <div className="rounded-xl bg-background p-5 lg:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                0G Aristotle Mainnet · chain {ZG_MAINNET_CHAIN_ID}
+              </div>
+              <h3 className="mt-0.5 font-display text-base font-semibold lg:text-lg">
+                Production contracts
+              </h3>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 font-mono text-[10.5px]">
+              {mainnet?.blockNumber ? (
+                <span className="rounded-full border border-green-500/40 px-2.5 py-1 uppercase tracking-widest text-green-500">
+                  <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                  block #{mainnet.blockNumber.toLocaleString()}
+                </span>
+              ) : (
+                <span className="rounded-full border border-border px-2.5 py-1 uppercase tracking-widest text-muted-foreground">
+                  loading…
+                </span>
+              )}
+              {mainnet?.agent && (
+                <a
+                  href={mainnetAddrUrl(mainnet.agent)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full border border-border px-2.5 py-1 hover:bg-secondary"
+                  title="Agent wallet on mainnet"
+                >
+                  agent · {short(mainnet.agent)} · {mainnet.agentBalanceOG.toFixed(4)} OG ↗
+                </a>
+              )}
+            </div>
+          </div>
+
+          {mainnetUser && (
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-border bg-surface p-3">
+                <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  $TONARA balance
+                </div>
+                <div className="mt-1 font-display text-xl font-semibold tabular-nums">
+                  {mainnetUser.tonara.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                </div>
+                <div className="font-mono text-[10px] text-muted-foreground">your wallet</div>
+              </div>
+              <div className="rounded-xl border border-border bg-surface p-3">
+                <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  On-chain memories
+                </div>
+                <div className="mt-1 font-display text-xl font-semibold tabular-nums">
+                  {mainnetUser.memCount}
+                </div>
+                <div className="font-mono text-[10px] text-muted-foreground">MemoryRegistry</div>
+              </div>
+              <div className="rounded-xl border border-border bg-surface p-3">
+                <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  InferenceLedger balance
+                </div>
+                <div className="mt-1 font-display text-xl font-semibold tabular-nums">
+                  {mainnetUser.ledger.toFixed(4)} OG
+                </div>
+                <div className="font-mono text-[10px] text-muted-foreground">prepaid · mainnet</div>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            {[
+              { name: "Tonara · $TONARA", addr: CONTRACTS.TONARA, tx: DEPLOY_TXS.TONARA },
+              { name: "MemoryRegistry", addr: CONTRACTS.MEMORY_REGISTRY, tx: undefined },
+              { name: "InferenceLedger", addr: CONTRACTS.INFERENCE_LEDGER, tx: DEPLOY_TXS.INFERENCE_LEDGER },
+              { name: "AgentRegistry", addr: CONTRACTS.AGENT_REGISTRY, tx: DEPLOY_TXS.AGENT_REGISTRY },
+            ].map((c) => (
+              <div
+                key={c.addr}
+                className="flex items-start justify-between gap-3 rounded-xl border border-border bg-surface px-3 py-2.5"
+              >
+                <div className="min-w-0">
+                  <div className="text-[12.5px] font-medium text-foreground">{c.name}</div>
+                  <a
+                    href={mainnetAddrUrl(c.addr)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="break-all font-mono text-[10.5px] text-muted-foreground hover:text-foreground hover:underline"
+                  >
+                    {c.addr}
+                  </a>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1 font-mono text-[10px]">
+                  <a
+                    href={mainnetAddrUrl(c.addr)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full border border-border px-2 py-0.5 hover:bg-secondary"
+                  >
+                    explorer ↗
+                  </a>
+                  {c.tx && (
+                    <a
+                      href={mainnetTxUrl(c.tx)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-full border border-border px-2 py-0.5 text-muted-foreground hover:bg-secondary"
+                    >
+                      deploy tx ↗
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3 font-mono text-[10px] text-muted-foreground">
+            mainnet anchors run automatically when the user has called{" "}
+            <code className="rounded bg-surface px-1">MemoryRegistry.setDelegate(agent, true)</code>
+            {" "}once · admin txns at <a href="/admin" className="underline">/admin</a>
+          </div>
+          {mainnet?.err && (
+            <div className="mt-2 rounded-md border border-yellow-500/40 bg-yellow-500/5 px-3 py-2 font-mono text-[10.5px] text-yellow-500">
+              mainnet · {mainnet.err}
+            </div>
+          )}
+        </div>
+      </div>
+
         <div className="rounded-2xl border border-border bg-surface p-1">
           <div className="rounded-xl bg-background p-5 lg:p-6">
             <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
