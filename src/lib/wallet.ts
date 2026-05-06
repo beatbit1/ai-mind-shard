@@ -24,6 +24,20 @@ export const zeroGTestnet: Chain = {
   testnet: true,
 };
 
+// 0G Aristotle mainnet (chain id 16661) — production contracts live here.
+export const zeroGMainnet: Chain = {
+  id: 16661,
+  name: "0G Aristotle Mainnet",
+  nativeCurrency: { name: "0G", symbol: "OG", decimals: 18 },
+  rpcUrls: {
+    default: { http: ["https://evmrpc.0g.ai"] },
+    public: { http: ["https://evmrpc.0g.ai"] },
+  },
+  blockExplorers: {
+    default: { name: "0G ChainScan", url: "https://chainscan.0g.ai" },
+  },
+};
+
 // Use RainbowKit's getDefaultConfig — it wires up the EIP-6963 injected
 // discovery so MetaMask (and any other browser-extension wallet) is detected
 // reliably. Custom connectorsForWallets requires a valid WalletConnect
@@ -33,7 +47,7 @@ export const wagmiConfig = getDefaultConfig({
   // Public WalletConnect Cloud demo projectId. Required by RainbowKit but only
   // used for the WalletConnect QR fallback, not for the injected MetaMask flow.
   projectId: "3fbb6bba6f1de962d911bb5b5c9dba88",
-  chains: [zeroGTestnet, mainnet, sepolia],
+  chains: [zeroGMainnet, zeroGTestnet, mainnet, sepolia],
   wallets: [
     {
       groupName: "Recommended",
