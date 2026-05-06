@@ -204,6 +204,8 @@ export function Dashboard() {
       } catch { /* ignore */ }
     }
   }
+
+  async function refreshTxStatus(hashes: string[]) {
     const uniq = Array.from(new Set(hashes.filter(Boolean)));
     if (uniq.length === 0) return;
     try {
