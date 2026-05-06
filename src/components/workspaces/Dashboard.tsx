@@ -285,9 +285,11 @@ export function Dashboard() {
     refreshProviders();
     refreshRecords();
     refreshActions();
+    refreshMainnet();
     const a = setInterval(refreshSnapshot, 15_000);
     const b = setInterval(refreshRecords, 30_000);
     const c = setInterval(refreshActions, 5_000);
+    const d = setInterval(refreshMainnet, 20_000);
     // Listen to localStorage changes from Mnemos/Atlas in same tab
     const onStorage = () => refreshActions();
     window.addEventListener("storage", onStorage);
@@ -295,6 +297,7 @@ export function Dashboard() {
       clearInterval(a);
       clearInterval(b);
       clearInterval(c);
+      clearInterval(d);
       window.removeEventListener("storage", onStorage);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
