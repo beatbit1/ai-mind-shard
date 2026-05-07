@@ -14,8 +14,16 @@ export const CONTRACTS = {
 
 export const DEPLOY_TXS = {
   TONARA:           "0x0d625c650b87164726f4bb7001ed4555f23f5c31ded76847e3482fd4a3133a08",
+  MEMORY_REGISTRY:  "0x4a3814691bbbd717d174c0da1af784849082cd9cb408be7b76cfe4bfd36ece59",
   INFERENCE_LEDGER: "0x64b3c1cdd28ad6797f1e0c6f713722e3eb12cad9c47dba750e5c94b30b6030ef",
   AGENT_REGISTRY:   "0xf26d0432fa740c19809003122bbec6c418023a05e86ca5fe1232c827184b60cc",
+} as const;
+
+export const DEPLOY_BLOCKS = {
+  TONARA: 32363942,
+  MEMORY_REGISTRY: 32366729,
+  INFERENCE_LEDGER: 32367628,
+  AGENT_REGISTRY: 32368263,
 } as const;
 
 export function mainnetTxUrl(hash: string): string {
