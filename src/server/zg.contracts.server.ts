@@ -116,6 +116,37 @@ export async function getOnChainRecordCount(owner: string): Promise<number> {
   }
 }
 
+export async function getOnChainMemoryRecords(owner: string, limit = 10): Promise<Array<{
+  index: string;
+  rootHash: string;
+  sizeBytes: number;
+  timestamp: number;
+  kind: number;
+  sessionId: string;
+  revoked: boolean;
+}>> {
+  try {
+    const reg = new ethers.Contract(CONTRACTS.MEMORY_REGISTRY, MemoryRegistryAbi as any, provider());
+    const count: bigint = await reg.recordCount(owner);
+    const total = Number(count);
+    if (total === 0) return [];
+    const pageSize = Math.min(limit, total);
+    const offset = total - pageSize;
+    const rows = await reg.recordsOf(owner, BigInt(offset), BigInt(pageSize));
+    return rows.map((r: any, i: number) => ({
+      index: String(offset + i),
+      rootHash: r.rootHash,
+      sizeBytes: Number(r.sizeBytes),
+      timestamp: Number(r.timestamp),
+      kind: Number(r.kind),
+      sessionId: r.sessionId,
+      revoked: Boolean(r.revoked),
+    })).reverse();
+  } catch {
+    return [];
+  }
+}
+
 export async function getTonaraBalance(owner: string): Promise<{ raw: string; formatted: number }> {
   try {
     const tok = new ethers.Contract(CONTRACTS.TONARA, TonaraAbi as any, provider());

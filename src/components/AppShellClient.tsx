@@ -6,7 +6,7 @@ import { WalletProviders } from "@/components/WalletProviders";
 import { Mnemos } from "@/components/workspaces/Mnemos";
 import { Atlas } from "@/components/workspaces/Atlas";
 import { Dashboard } from "@/components/workspaces/Dashboard";
-import { zeroGTestnet } from "@/lib/wallet";
+import { ZG_MAINNET_CHAIN_ID } from "@/contracts/addresses";
 
 type Workspace = "dashboard" | "mnemos" | "atlas";
 
@@ -72,25 +72,25 @@ function WalletStatus() {
   const chainId = useChainId();
   const { switchChain, isPending } = useSwitchChain();
   const { disconnect } = useDisconnect();
-  const onZeroG = chainId === zeroGTestnet.id;
+  const onMainnet = chainId === ZG_MAINNET_CHAIN_ID;
 
   return (
     <div className="flex items-center gap-2">
       {isConnected && address && (
         <div className="hidden items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[11px] md:flex">
-          <span className={onZeroG ? "text-foreground" : "text-destructive"}>
-            {onZeroG ? "0G Galileo" : `chain ${chainId}`}
+          <span className={onMainnet ? "text-foreground" : "text-destructive"}>
+            {onMainnet ? "0G Mainnet" : `chain ${chainId}`}
           </span>
           <span className="text-muted-foreground">{short(address)}</span>
         </div>
       )}
-      {isConnected && !onZeroG && (
+      {isConnected && !onMainnet && (
         <button
-          onClick={() => switchChain({ chainId: zeroGTestnet.id })}
+          onClick={() => switchChain({ chainId: ZG_MAINNET_CHAIN_ID })}
           disabled={isPending}
           className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground transition-colors hover:bg-secondary disabled:opacity-50"
         >
-          {isPending ? "Switching…" : "Switch to 0G"}
+          {isPending ? "Switching…" : "Use 0G Mainnet"}
         </button>
       )}
       {isConnected ? (

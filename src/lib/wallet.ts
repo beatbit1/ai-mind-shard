@@ -6,23 +6,7 @@ import {
   coinbaseWallet,
   walletConnectWallet,
 } from "@rainbow-me/rainbowkit/wallets";
-import { mainnet, sepolia } from "wagmi/chains";
 import type { Chain } from "wagmi/chains";
-
-// 0G Galileo testnet (chain id 16602 — current Galileo network).
-export const zeroGTestnet: Chain = {
-  id: 16602,
-  name: "0G Galileo Testnet",
-  nativeCurrency: { name: "0G", symbol: "OG", decimals: 18 },
-  rpcUrls: {
-    default: { http: ["https://evmrpc-testnet.0g.ai"] },
-    public: { http: ["https://evmrpc-testnet.0g.ai"] },
-  },
-  blockExplorers: {
-    default: { name: "0G Explorer", url: "https://chainscan-galileo.0g.ai" },
-  },
-  testnet: true,
-};
 
 // 0G Aristotle mainnet (chain id 16661) — production contracts live here.
 export const zeroGMainnet: Chain = {
@@ -47,7 +31,7 @@ export const wagmiConfig = getDefaultConfig({
   // Public WalletConnect Cloud demo projectId. Required by RainbowKit but only
   // used for the WalletConnect QR fallback, not for the injected MetaMask flow.
   projectId: "3fbb6bba6f1de962d911bb5b5c9dba88",
-  chains: [zeroGMainnet, zeroGTestnet, mainnet, sepolia],
+  chains: [zeroGMainnet],
   wallets: [
     {
       groupName: "Recommended",

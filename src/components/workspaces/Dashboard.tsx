@@ -6,13 +6,11 @@ import {
   ledgerSnapshot,
   listInferenceProviders,
   listMemories,
-  verifyInference,
   verifyTxs,
 } from "@/server/zg.functions";
 import { mainnetSnapshot, mainnetUserStats } from "@/server/zg.mainnet.functions";
 import { getMemoryRecordRefs, getMemoryRoots, type MemoryRecordRef } from "@/lib/memoryRecords";
-import { getAgentActions, appendAgentAction, type AgentAction } from "@/lib/agentActions";
-import { zeroGTestnet } from "@/lib/wallet";
+import { getAgentActions, type AgentAction } from "@/lib/agentActions";
 import { CONTRACTS, DEPLOY_TXS, mainnetAddrUrl, mainnetTxUrl, ZG_MAINNET_CHAIN_ID } from "@/contracts/addresses";
 import {
   Dialog,
@@ -22,9 +20,8 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 
-const EXPLORER = "https://chainscan-galileo.0g.ai";
+const EXPLORER = "https://chainscan.0g.ai";
 const STORAGE_EXPLORER = "https://storagescan-galileo.0g.ai";
-const MAINNET_EXPLORER = "https://chainscan.0g.ai";
 
 type SnapshotData = {
   address: string;
@@ -71,14 +68,13 @@ export function Dashboard() {
   const chainId = useChainId();
   const { disconnect } = useDisconnect();
   const wallet = address ?? "guest";
-  const onZeroG = chainId === zeroGTestnet.id;
+  const onMainnet = chainId === ZG_MAINNET_CHAIN_ID;
 
   const snapshotFn = useServerFn(ledgerSnapshot);
   const providersFn = useServerFn(listInferenceProviders);
   const listFn = useServerFn(listMemories);
   const verifyFn = useServerFn(verifyTxs);
   const inspectFn = useServerFn(inspectRecord);
-  const verifyInferenceFn = useServerFn(verifyInference);
   const mainnetSnapFn = useServerFn(mainnetSnapshot);
   const mainnetUserFn = useServerFn(mainnetUserStats);
 
@@ -110,13 +106,6 @@ export function Dashboard() {
     data: any | null;
     error: string | null;
   }>({ open: false, rootHash: "", loading: false, data: null, error: null });
-  const [vi, setVi] = useState<{
-    open: boolean;
-    loading: boolean;
-    data: any | null;
-    error: string | null;
-  }>({ open: false, loading: false, data: null, error: null });
-
   async function openInspect(rootHash: string) {
     const ref = records.find((r) => r.rootHash === rootHash);
     setInspect({ open: true, rootHash, loading: true, data: { ref }, error: null });
@@ -354,12 +343,6 @@ export function Dashboard() {
                 </button>
               )}
               <button
-                onClick={runVerifyInference}
-                className="rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
-              >
-                Verify inference
-              </button>
-              <button
                 onClick={() => {
                   refreshSnapshot();
                   refreshProviders();
@@ -455,9 +438,9 @@ export function Dashboard() {
             </div>
           )}
 
-          {isConnected && !onZeroG && (
+          {isConnected && !onMainnet && (
             <div className="mt-4 rounded-xl border border-destructive/40 bg-surface px-4 py-3 text-center font-mono text-[11px] text-destructive">
-              wallet connected on chain {chainId}; switch to 0G Galileo chain {zeroGTestnet.id} for accurate network state
+              wallet connected on chain {chainId}; use 0G Aristotle Mainnet chain {ZG_MAINNET_CHAIN_ID} for live contract state
             </div>
           )}
         </div>

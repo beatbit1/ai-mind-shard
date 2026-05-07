@@ -4,6 +4,7 @@ import {
   commitMemoryOnChain,
   getInferenceLedgerBalance,
   getMainnetSnapshot,
+  getOnChainMemoryRecords,
   getOnChainRecordCount,
   getTonaraBalance,
   type MemoryKind,
@@ -26,10 +27,11 @@ export const mainnetUserStats = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => d as { wallet: string })
   .handler(async ({ data }) => {
     try {
-      const [tonara, count, ledger] = await Promise.all([
+      const [tonara, count, ledger, records] = await Promise.all([
         getTonaraBalance(data.wallet),
         getOnChainRecordCount(data.wallet),
         getInferenceLedgerBalance(data.wallet),
+        getOnChainMemoryRecords(data.wallet, 10),
       ]);
       return {
         ok: true as const,
@@ -37,6 +39,7 @@ export const mainnetUserStats = createServerFn({ method: "POST" })
         tonaraRaw: tonara.raw,
         memoryCount: count,
         ledgerBalanceOG: ledger,
+        records,
       };
     } catch (e) {
       return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
