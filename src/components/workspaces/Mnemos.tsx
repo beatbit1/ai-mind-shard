@@ -60,9 +60,10 @@ export function Mnemos() {
   const anchorFn = useServerFn(anchorMemoryOnMainnet);
 
   useEffect(() => {
-    setMessages(loadLocal());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeKey]);
+    setMessages([]);
+    setTrace([]);
+    localStorage.setItem(sessionKey, crypto.randomUUID());
+  }, [sessionKey]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -95,13 +96,6 @@ export function Mnemos() {
     return s;
   }
 
-  function loadLocal(): Msg[] {
-    try {
-      return JSON.parse(localStorage.getItem(storeKey) ?? "[]");
-    } catch {
-      return [];
-    }
-  }
   function saveLocal(msgs: Msg[]) {
     try {
       localStorage.setItem(storeKey, JSON.stringify(msgs.slice(-40)));
@@ -274,7 +268,7 @@ export function Mnemos() {
         chat.error.kind === "not_configured"
           ? `⚠️ 0G not configured yet: ${chat.error.message}\n\nAdd ZG_PRIVATE_KEY and ZG_MEMORY_ENC_KEY in Cloud secrets to enable real inference.`
           : chat.error.kind === "unfunded"
-            ? `⚠️ Wallet unfunded. Send testnet OG to ${chat.error.address ?? "your 0G wallet"} from https://faucet.0g.ai`
+            ? `⚠️ Agent wallet needs OG for runtime calls: ${chat.error.address ?? "your 0G wallet"}`
             : `⚠️ Inference failed: ${chat.error.message}`;
       pushTrace("err", `inference · ${chat.error.message}`);
       setZgError(chat.error.message);
@@ -425,7 +419,7 @@ export function Mnemos() {
                       <LockGlyph /> 0G root {short(m.rootHash)}
                       {m.txHash && (
                         <a
-                          href={`https://chainscan-galileo.0g.ai/tx/${m.txHash}`}
+                          href={mainnetTxUrl(m.txHash)}
                           target="_blank"
                           rel="noreferrer"
                           className="underline"
