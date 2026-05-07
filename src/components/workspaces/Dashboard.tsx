@@ -352,12 +352,6 @@ export function Dashboard() {
                 </button>
               )}
               <button
-                onClick={runVerifyInference}
-                className="rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
-              >
-                Verify inference
-              </button>
-              <button
                 onClick={() => {
                   refreshSnapshot();
                   refreshProviders();
@@ -453,9 +447,9 @@ export function Dashboard() {
             </div>
           )}
 
-          {isConnected && !onZeroG && (
+          {isConnected && !onMainnet && (
             <div className="mt-4 rounded-xl border border-destructive/40 bg-surface px-4 py-3 text-center font-mono text-[11px] text-destructive">
-              wallet connected on chain {chainId}; switch to 0G Galileo chain {zeroGTestnet.id} for accurate network state
+              wallet connected on chain {chainId}; use 0G Aristotle Mainnet chain {ZG_MAINNET_CHAIN_ID} for live contract state
             </div>
           )}
         </div>
