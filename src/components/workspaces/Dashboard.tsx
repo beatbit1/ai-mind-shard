@@ -6,12 +6,11 @@ import {
   ledgerSnapshot,
   listInferenceProviders,
   listMemories,
-  verifyInference,
   verifyTxs,
 } from "@/server/zg.functions";
 import { mainnetSnapshot, mainnetUserStats } from "@/server/zg.mainnet.functions";
 import { getMemoryRecordRefs, getMemoryRoots, type MemoryRecordRef } from "@/lib/memoryRecords";
-import { getAgentActions, appendAgentAction, type AgentAction } from "@/lib/agentActions";
+import { getAgentActions, type AgentAction } from "@/lib/agentActions";
 import { CONTRACTS, DEPLOY_TXS, mainnetAddrUrl, mainnetTxUrl, ZG_MAINNET_CHAIN_ID } from "@/contracts/addresses";
 import {
   Dialog,
@@ -76,7 +75,6 @@ export function Dashboard() {
   const listFn = useServerFn(listMemories);
   const verifyFn = useServerFn(verifyTxs);
   const inspectFn = useServerFn(inspectRecord);
-  const verifyInferenceFn = useServerFn(verifyInference);
   const mainnetSnapFn = useServerFn(mainnetSnapshot);
   const mainnetUserFn = useServerFn(mainnetUserStats);
 
@@ -108,13 +106,6 @@ export function Dashboard() {
     data: any | null;
     error: string | null;
   }>({ open: false, rootHash: "", loading: false, data: null, error: null });
-  const [vi, setVi] = useState<{
-    open: boolean;
-    loading: boolean;
-    data: any | null;
-    error: string | null;
-  }>({ open: false, loading: false, data: null, error: null });
-
   async function openInspect(rootHash: string) {
     const ref = records.find((r) => r.rootHash === rootHash);
     setInspect({ open: true, rootHash, loading: true, data: { ref }, error: null });
