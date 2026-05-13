@@ -8,7 +8,7 @@ import {
   getOnChainRecordCount,
   getTonaraBalance,
   type MemoryKind,
-} from "./zg.contracts.server";
+} from "../server/zg.contracts.server";
 
 export const mainnetSnapshot = createServerFn({ method: "GET" }).handler(async () => {
   try {

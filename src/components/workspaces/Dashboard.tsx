@@ -7,10 +7,11 @@ import {
   listInferenceProviders,
   listMemories,
   verifyTxs,
-} from "@/server/zg.functions";
-import { mainnetSnapshot, mainnetUserStats } from "@/server/zg.mainnet.functions";
+  verifyInference,
+} from "@/fns/zg.functions";
+import { mainnetSnapshot, mainnetUserStats } from "@/fns/zg.mainnet.functions";
 import { getMemoryRecordRefs, getMemoryRoots, type MemoryRecordRef } from "@/lib/memoryRecords";
-import { getAgentActions, type AgentAction } from "@/lib/agentActions";
+import { getAgentActions, appendAgentAction, type AgentAction } from "@/lib/agentActions";
 import { CONTRACTS, DEPLOY_TXS, mainnetAddrUrl, mainnetTxUrl, ZG_MAINNET_CHAIN_ID } from "@/contracts/addresses";
 import {
   Dialog,
@@ -77,6 +78,7 @@ export function Dashboard() {
   const inspectFn = useServerFn(inspectRecord);
   const mainnetSnapFn = useServerFn(mainnetSnapshot);
   const mainnetUserFn = useServerFn(mainnetUserStats);
+  const verifyInferenceFn = useServerFn(verifyInference); // ✅ FIX 1: was missing
 
   const [mainnet, setMainnet] = useState<{
     agent: string;
@@ -99,6 +101,15 @@ export function Dashboard() {
   const [copied, setCopied] = useState(false);
   const [txStatus, setTxStatus] = useState<Record<string, TxStatusItem>>({});
   const [actions, setActions] = useState<AgentAction[]>([]);
+
+  // ✅ FIX 2: vi state was missing — used by the Verify Inference modal
+  const [vi, setVi] = useState<{
+    open: boolean;
+    loading: boolean;
+    data: any | null;
+    error: string | null;
+  }>({ open: false, loading: false, data: null, error: null });
+
   const [inspect, setInspect] = useState<{
     open: boolean;
     rootHash: string;
@@ -106,6 +117,7 @@ export function Dashboard() {
     data: any | null;
     error: string | null;
   }>({ open: false, rootHash: "", loading: false, data: null, error: null });
+
   async function openInspect(rootHash: string) {
     const ref = records.find((r) => r.rootHash === rootHash);
     setInspect({ open: true, rootHash, loading: true, data: { ref }, error: null });
@@ -260,7 +272,6 @@ export function Dashboard() {
           return tb - ta;
         });
         setRecords(merged);
-        // Verify tx confirmation status on-chain
         refreshTxStatus(merged.map((m) => m.txHash || "").filter(Boolean));
       } else setRecordsErr(r.error.message);
     } catch (e) {
@@ -279,7 +290,6 @@ export function Dashboard() {
     const b = setInterval(refreshRecords, 30_000);
     const c = setInterval(refreshActions, 5_000);
     const d = setInterval(refreshMainnet, 20_000);
-    // Listen to localStorage changes from Mnemos/Atlas in same tab
     const onStorage = () => refreshActions();
     window.addEventListener("storage", onStorage);
     return () => {
@@ -334,6 +344,12 @@ export function Dashboard() {
                   block #{ok.blockNumber.toLocaleString()} · chain {ok.chainId}
                 </span>
               )}
+              <button
+                onClick={() => runVerifyInference()}
+                className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                Verify inference
+              </button>
               {isConnected && (
                 <button
                   onClick={() => disconnect()}
@@ -492,10 +508,7 @@ export function Dashboard() {
                     return (
                       <tr key={r.rootHash} className="border-t border-border hover:bg-surface/50">
                         <td className="px-3 py-2">
-                          <StatusBadge
-                            status={status}
-                            confirmations={tx?.confirmations}
-                          />
+                          <StatusBadge status={status} confirmations={tx?.confirmations} />
                         </td>
                         <td className="px-3 py-2 font-mono text-[11px]">
                           <button

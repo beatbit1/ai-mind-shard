@@ -3,7 +3,7 @@ import { useAccount } from "wagmi";
 import { useServerFn } from "@tanstack/react-start";
 import { ChainMap, type ChainEdge } from "./ChainMap";
 import { RecallTrace, type TraceLine, sha256Hex, ts, wait } from "./RecallTrace";
-import { chat0g, commitMemory } from "@/server/zg.functions";
+import { chat0g, commitMemory } from "@/fns/zg.functions";
 import { appendAgentAction } from "@/lib/agentActions";
 import { appendMemoryRecord } from "@/lib/memoryRecords";
 
