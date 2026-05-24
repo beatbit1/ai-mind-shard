@@ -2,6 +2,8 @@
 // shard reassembly, cross-chain research) so the dashboard can surface what
 // the agent has been doing — with timestamps and related tx hashes.
 
+import { uuid } from "./uuid";
+
 export const ACTIONS_PREFIX = "tonara.agent.actions.";
 
 export type AgentActionKind =
@@ -38,7 +40,7 @@ export function getAgentActions(wallet: string): AgentAction[] {
 export function appendAgentAction(wallet: string, action: Omit<AgentAction, "id" | "ts"> & { ts?: number }) {
   const list = getAgentActions(wallet);
   list.push({
-    id: crypto.randomUUID(),
+    id: uuid(),
     ts: action.ts ?? Date.now(),
     ...action,
   });
