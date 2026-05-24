@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @title MemoryRegistry — append-only on-chain log of encrypted memory roots
 /// @notice Each Tonara user has a per-address log of (rootHash, sizeBytes,
 ///         timestamp, kind, sessionId). The agent's hot wallet may commit on
 ///         behalf of users that have explicitly delegated it.
-contract MemoryRegistry is Ownable {
+contract MemoryRegistry {
     enum MemoryKind { User, Assistant, ResearchBrief, Custom }
 
     struct MemoryRecord {
@@ -26,7 +25,7 @@ contract MemoryRegistry is Ownable {
     event MemoryRevoked(address indexed owner, uint256 indexed index);
     event DelegateSet(address indexed owner, address indexed delegate, bool allowed);
 
-    constructor(address initialOwner) Ownable(initialOwner) {}
+    constructor() {}
 
     function setDelegate(address delegate, bool allowed) external {
         delegates[msg.sender][delegate] = allowed;

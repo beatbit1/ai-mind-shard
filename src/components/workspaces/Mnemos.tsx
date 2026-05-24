@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { uuid } from "@/lib/uuid";
 import { useAccount } from "wagmi";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -62,7 +63,7 @@ export function Mnemos() {
   useEffect(() => {
     setMessages([]);
     setTrace([]);
-    localStorage.setItem(sessionKey, crypto.randomUUID());
+    localStorage.setItem(sessionKey, uuid());
   }, [sessionKey]);
 
   useEffect(() => {
@@ -90,7 +91,7 @@ export function Mnemos() {
   function getSessionId(): string {
     let s = localStorage.getItem(sessionKey);
     if (!s) {
-      s = crypto.randomUUID();
+      s = uuid();
       localStorage.setItem(sessionKey, s);
     }
     return s;
@@ -112,7 +113,7 @@ export function Mnemos() {
     setTrace([]);
     const sessionId = getSessionId();
 
-    const userMsg: Msg = { id: crypto.randomUUID(), role: "user", text: trimmed };
+    const userMsg: Msg = { id: uuid(), role: "user", text: trimmed };
     let next = [...messages, userMsg];
     setMessages(next);
 
@@ -278,7 +279,7 @@ export function Mnemos() {
       });
     }
 
-    const assistantMsg: Msg = { id: crypto.randomUUID(), role: "assistant", text: replyText };
+    const assistantMsg: Msg = { id: uuid(), role: "assistant", text: replyText };
     next = [...next, assistantMsg];
     setMessages(next);
 
